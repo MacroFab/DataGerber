@@ -99,6 +99,19 @@ sub new {
  $self->{'error'}      = undef;
  $self->{'parseState'} = {};
  $self->{'nmc'}	       = 0;
+ $self->{'boundaries'} = { 
+ 	'LX' => undef,
+ 	'RX' => undef,
+ 	'TY' => undef,
+ 	'BY' => undef
+ };
+ 
+ $self->{'lastcoord'} = {
+ 	 'X' => 0,
+ 	 'Y' => 0
+ };
+ 
+ $self->{'lastMove'} = 0;
  
  	# default to inch mode if not specified
  
@@ -334,9 +347,16 @@ sub mode {
  	'coordinates' => 'A'
  	'coordinates' => 'Abs'
  	'coordinates' => 'Absolute'
- 	
- B<Note: It is not recommended to use incremental coordinates.  In fact, you
- should always use absolute.>
+ 
+B<DO NOT USE INCREMENTAL COORDINATES>
+
+ The use of incremental coordinates is strongly discouraged in the spec, and this
+ module does not fully support them. Many features will not work properly with
+ incremental coordinates.  Simply put: do not use incremental coordinates.
+ 
+ Incremental coordinates are not to be confused with modality of coordinates.
+ Full coordinate modality, as compliant with the spec, is supported.
+
 
 =item format
 
@@ -373,6 +393,7 @@ sub mode {
  
 =back
 
+
 =cut
 
 
@@ -398,7 +419,7 @@ sub format {
  	 	 $self->{'parameters'}{'FS'}{'coordinates'} = $opts{'coordinates'};
  	 }
  	 else {
- 	 	 $self->error("[format] Invalid coordinates value: $opts{'zero'}");
+ 	 	 $self->error("[format] Invalid coordinates value: $opts{'coordinates'}");
  	 	 return undef;
  	 }
  } 	 	 
@@ -542,9 +563,14 @@ sub function {
  }
  
 
- if( exists($opts{'coord'}) && ( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) ) {
- 	 $self->error("[function] Operation Code must be provided when Coordinate Data is provided");
- 	 return undef;
+ if( exists($opts{'coord'}) ) {
+ 	 
+ 	 if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) {
+ 	 	 $self->error("[function] Operation Code must be provided when Coordinate Data is provided");
+ 	 	 return undef;
+ 	 }
+ 	
+ 	 $func{'xy_coords'} = $self->_processCoords($opts{'coord'}, $opts{'op'});
  }
  
  push(@{ $self->{'functions'} }, \%func);
@@ -609,6 +635,72 @@ sub functions {
  
 }
 
+
+=item boundingBox
+
+ Returns the coordinates of a box which exactly holds the entire contents.
+ 
+ The result is an array with four elements, representing the Left-most X, Bottom-most
+ Y, Right-most X, and Top-Most Y.
+ 
+ When considered as tuples of X, Y and corners, the first tuple would represent
+ the bottom-left corner, and the second the top-right.
+ 
+ e.g.:
+ 
+ 	my ($lx, $by, $rx, $ty) = $gerb->boundingBox();
+ 	
+ 		# ex: 0, 0, 53.7, 123.0056
+ 	
+ All values are floats, in the units specified by the format spec.
+ 	
+=cut
+
+sub boundingBox {
+	
+ my $self = shift;
+ 
+ my @box = ( 
+ 	$self->{'boundaries'}{'LX'}, $self->{'boundaries'}{'BY'},
+ 	$self->{'boundaries'}{'RX'}, $self->{'boundaries'}{'TY'}
+ );
+
+ return @box;
+}
+
+
+=item width 
+
+ Returns the width of the bounding box, in native units as a decimal.
+ 
+ 	my $width = $gerb->width();
+
+=cut
+
+sub width {
+ 
+ my $self = shift;
+ 
+ return $self->{'boundaries'}{'RX'} - $self->{'boundaries'}{'LX'};
+ 	
+}
+
+=item height 
+
+ Returns the height of the bounding box, in native units as a decimal.
+ 
+ 	my $height = $gerb->height();
+
+=cut
+
+sub height {
+
+ my $self = shift;
+ 
+ return $self->{'boundaries'}{'TY'} - $self->{'boundaries'}{'BY'};
+ 
+}
+
  # validate g-codes
  
 sub _validateGC {
@@ -619,6 +711,163 @@ sub _validateGC {
  return 1 if( exists( $gCodes{$code} ) );
  return undef; 	 
 	
+}
+
+
+sub _processCoords {
+
+ my  $self = shift;
+ my $coord = shift;
+ my  $code = shift;
+ 
+ my %pos = ();
+ my %off = ();
+ 
+ while( $coord =~ s/([XY]{1})([\-0-9]+)// ) {
+ 	my $axis = $1;
+ 	my  $loc = $2;
+
+	$pos{$axis} = $loc;
+ }
+ 
+ while( $coord =~ s/([IJ]{1})([\-0-9]+)// ) {
+ 	 my  $oaxis = $1;
+ 	 my $offset = $2;
+ 	 
+ 	 $off{$oaxis} = $offset;
+ }
+ 
+ 
+ 	# correct lengths and convert values to native floats
+  
+ my $fLen = $self->{'parameters'}{'FS'}{'format'}{'integer'} + $self->{'parameters'}{'FS'}{'format'}{'decimal'};
+ my $fDiv = 10 ** $self->{'parameters'}{'FS'}{'format'}{'decimal'};
+ my  $pad = $self->{'parameters'}{'FS'}{'zero'} =~ /^L/i ? 1 : 0;
+ 
+ foreach(\%pos, \%off) {
+ 	foreach my $key (keys(%{$_})) {
+ 		my $thisLen = length($_->{$key});
+ 		if( $thisLen < $fLen ) {
+ 				# length is shorter than target length
+ 			if( $pad ) {
+ 					# we are padding the whole numbers
+ 					# hold any +/- pre-modifiers off
+ 				my $pre = '';
+ 				   $pre = $1 if($_->{$key} =~ s/^[+\-]//);
+ 				   
+ 				$_->{$key} = $pre . "0" x ($fLen - $thisLen) . $_->{$key};
+ 			}
+ 			else {
+ 					# we are padding the decimals
+ 				$_->{$key} .= "0" x ($fLen - $thisLen);
+ 			}
+ 		}
+ 		
+ 			# convert to decimal
+ 		$_->{$key} /= $fDiv;
+ 	}			
+ }
+ 
+ 	# default to last coordinate value for axis
+ 	# if not supplied (coordinates are modal)
+ foreach('X', 'Y') {
+ 	 if( ! exists($pos{$_}) ) {
+ 	 	 if( defined($self->{'lastcoord'}{$_}) ) {
+ 	 	 	 $pos{$_} = $self->{'lastcoord'}{$_};
+ 	 	 }
+ 	 	 else {
+ 	 	 	 $pos{$_} = 0;
+ 	 	 }
+ 	 }
+ }
+ 
+ 	# process offsets
+ 	
+ if( exists($off{'I'}) && defined($off{'I'}) ) {
+ 	 $pos{'X'} += $off{'I'};
+ }
+ 
+ if( exists($off{'J'}) && defined($off{'J'}) ) {
+ 	 $pos{'Y'} += $off{'J'};
+ }
+
+ 
+ 
+ # TODO: Consider size of aperture or image when calculating the data
+ # below.
+ 
+ 	# if a move-only (no-expose) code, we record that our last command
+ 	# was a move, and do not update coordinates.  This allows us to move
+ 	# as much as we like without impacting the bounding box.
+ 	
+ if( $code eq 'D02' ) {
+ 	 $self->{'lastMove'} = 1;
+ }
+ elsif( $code eq 'D01' ) {
+ 	 	# this is a draw code
+ 	 	
+ 	 if( $self->{'lastMove'} ) {
+ 	 	 	# if our last code was a move code, let's go ahead and
+ 	 	 	# record that our drawing starts at the destination of
+ 	 	 	# the last move
+ 	 	 $self->_updateCoords($self->{'lastcoord'});
+ 	 	 $self->{'lastMove'} = 0;
+ 	 }
+ 
+ 	 	# update bounding box coordinates if move with aperture open, or flash
+ 	 $self->_updateCoords(\%pos);
+ }
+ else {
+ 	 	# this is a flash code, we only update at the position of the
+ 	 	# flash... 
+ 	 $self->_updateCoords(\%pos);
+ }
+ 
+ 	# record last coordinate positions
+ $self->{'lastcoord'}{'X'} = $pos{'X'};
+ $self->{'lastcoord'}{'Y'} = $pos{'Y'};
+ 
+
+ 
+ return [ $pos{'X'}, $pos{'Y'} ];
+ 
+}
+
+sub _updateCoords {
+
+ my $self = shift;
+ my  $pos = shift; # hashref, X,Y coords
+ 
+ return if( ! ref($pos) eq 'HASH' || ! exists($pos->{'X'}) || ! exists($pos->{'Y'}) );
+ 
+ if( ! defined($self->{'boundaries'}{'LX'}) ) {
+ 	 $self->{'boundaries'}{'LX'} = $pos->{'X'};
+ }
+ elsif( $pos->{'X'} < $self->{'boundaries'}{'LX'} ) {
+ 	 $self->{'boundaries'}{'LX'} = $pos->{'X'};
+ }
+ 
+ if( ! defined($self->{'boundaries'}{'RX'}) ) {
+ 	 $self->{'boundaries'}{'RX'} = $pos->{'X'};
+ }
+ elsif( $pos->{'X'} > $self->{'boundaries'}{'RX'} ) {
+ 	 $self->{'boundaries'}{'RX'} = $pos->{'X'};
+ }
+ 
+ if( ! defined($self->{'boundaries'}{'BY'}) ) {
+ 	 $self->{'boundaries'}{'BY'} = $pos->{'Y'};
+ }
+ elsif( $pos->{'Y'} < $self->{'boundaries'}{'BY'} ) {
+ 	 $self->{'boundaries'}{'BY'} = $pos->{'Y'};
+ }
+ 
+ if( ! defined($self->{'boundaries'}{'TY'}) ) {
+ 	 $self->{'boundaries'}{'TY'} = $pos->{'Y'};
+ }
+ elsif( $pos->{'Y'} > $self->{'boundaries'}{'TY'} ) {
+ 	 $self->{'boundaries'}{'TY'} = $pos->{'Y'};
+ }
+ 
 }
 
 =head1 AUTHOR

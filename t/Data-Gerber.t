@@ -8,7 +8,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 12;
+use Test::More tests => 15;
 BEGIN { use_ok('Data::Gerber') };
 
 #########################
@@ -31,11 +31,13 @@ is( $gerb->mode(), 'IN', 'Read Mode');
 ok( $gerb->format( 'zero' => 'L', 'coordinates' => 'A', 'format' => { 'integer' => 5, 'decimal' => 5 }), 'Set Format');
 ok( checkFormat(), 'Read Format');
 
-ok( $gerb->function( 'func' => 'G01', 'coord' => 'X001000Y001000', 'op' => 'D01'), 'Add Func 0');
+ok( $gerb->function( 'func' => 'G01', 'coord' => 'X500000Y500000', 'op' => 'D02'), 'Add Func 0');
 is( $gerb->functions( 'count' => 1 ), 1, 'Func Count 0');
 ok( checkFunc0(), 'Check Func 0');
 
-
+ok( $gerb->function( 'func' => 'G01', 'coord' => 'X300000Y600000', 'op' => 'D01'), 'Add Func 1');
+is( $gerb->width(), 2, 'Width');
+is( $gerb->height(), 1, 'Height');
 
 sub checkFormat {
 
@@ -60,8 +62,8 @@ sub checkFunc0 {
  my $func = $gerb->functions( 'num' => 0 );
  
  return undef if( ! exists( $func->{'func'} )  || $func->{'func'} ne 'G01' );
- return undef if( ! exists( $func->{'coord'} ) || $func->{'coord'} ne 'X001000Y001000' );
- return undef if( ! exists( $func->{'op'} )    || $func->{'op'} ne 'D01' );
+ return undef if( ! exists( $func->{'coord'} ) || $func->{'coord'} ne 'X500000Y500000' );
+ return undef if( ! exists( $func->{'op'} )    || $func->{'op'} ne 'D02' );
  
  return 1;
 }
