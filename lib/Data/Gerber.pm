@@ -68,6 +68,7 @@ my %gCodes = (
 	'G4'  => 1,
 	'G36'  => 1,
 	'G37'  => 1,
+	'G70'  => 1,
 	'G74'  => 1,
 	'G75'  => 1,
 	'M02'  => 1
@@ -91,15 +92,17 @@ sub new {
  my $class = shift;
  my $self = bless({}, $class);
 
- $self->{'apertures'}  = {};
- $self->{'macros'}     = {};
- $self->{'boundaries'} = [];
- $self->{'parameters'} = {};
- $self->{'functions'}  = [];
- $self->{'error'}      = undef;
- $self->{'parseState'} = {};
- $self->{'nmc'}	       = 0;
- $self->{'boundaries'} = { 
+ $self->{'ignore'}      = 0;
+ $self->{'ignoreBlank'} = 0;
+ $self->{'apertures'}   = {};
+ $self->{'macros'}      = {};
+ $self->{'boundaries'}  = [];
+ $self->{'parameters'}  = {};
+ $self->{'functions'}   = [];
+ $self->{'error'}       = undef;
+ $self->{'parseState'}  = {};
+ $self->{'nmc'}	        = 0;
+ $self->{'boundaries'}  = { 
  	'LX' => undef,
  	'RX' => undef,
  	'TY' => undef,
@@ -111,7 +114,8 @@ sub new {
  	 'Y' => 0
  };
  
- $self->{'lastMove'} = 0;
+ $self->{'curAperture'} = undef;
+ $self->{'lastMove'}    = 0;
  
  	# default to inch mode if not specified
  
@@ -146,6 +150,68 @@ sub error {
 }
 
 
+=item ignoreInvalid( FLAG )
+
+ Set or read the IgnoreInvalid flag.
+ 
+ When the IgnoreInvalid flag is set to any true value, any invalid or deprecated
+ G-Codes or parameters will be ignored. When this flag is set to any false value
+ an error will be generated.
+ 
+ The default flag value is 0, or false.
+ 
+ This method sets the flag if a flag argument is provided, or just reads the
+ flag if the flag argument is not provided.  This method always returns the
+ current flag value, after any set operation.
+ 
+=cut
+
+
+sub ignoreInvalid {
+
+ my $self = shift;
+ my  $opt = shift;
+ 
+ if( defined($opt) ) {
+ 	 $self->{'ignore'} = $opt;
+ }
+ 
+ return $self->{'ignore'};
+ 
+}
+
+
+=item ignoreBlank( FLAG )
+
+ Set or read the IgnoreBlank flag.
+ 
+ When the IgnoreBlank flag is set to any true value any drawing by a completely
+ closed aperture (commonly used for comments, borders, etc.), after setting the
+ flag, will be ignored when calculating the bounding box and size of the 
+ drawing area.
+ 
+ The default flag value is 0, or false.
+ 
+ This method sets the flag if a flag argument is provided, or just reads the
+ flag if the flag argument is not provided.  This method always returns the
+ current flag value, after any set operation.
+ 
+=cut
+
+sub ignoreBlank {
+	
+ my $self = shift;
+ my  $opt = shift;
+
+  if( defined($opt) ) {
+ 	 $self->{'ignoreBlank'} = $opt;
+ }
+ 
+ return $self->{'ignoreBlank'};
+ 
+}
+
+
 =item aperture( OPTS )
 
  Add or Get a custom aperture, defined by OPTS.
@@ -167,6 +233,7 @@ sub error {
  	  'code'      => D-code for aperture,
  	  'type'      => Aperture type (built-in or macro name)
  	  'modifiers' => String containing list of modifiers (if set)
+ 	  'radius'    => radius in format units (circle type only)
  	  
  	}
 
@@ -211,8 +278,8 @@ sub aperture {
  	# check code
  	
  if( $opts{'code'} =~ /D(\d+)/ ) {
- 	 if( $1 < 10 ) {
- 	 	 $self->error("[aperture] Invalid D-Code: $opts{'code'}");
+ 	 if( ($1 + 0) < 10 ) {
+ 	 	 $self->error("[aperture] Invalid D-Code: '$opts{'code'}'");
  	 	 return undef;
  	 }
  }
@@ -229,12 +296,25 @@ sub aperture {
 		 return undef;
 	 }
 	 
-		# save
-		
+	 
 	 $self->{'apertures'}{ $opts{'code'} } = {
 		 'type'	     => $opts{'type'},
 		 'modifiers' => ( exists($opts{'modifiers'}) ) ? $opts{'modifiers'} : ''
 	 };
+	 
+	 	# circle aperture
+	 if( $opts{'type'} eq 'C' ) {
+	 	if( $opts{'modifiers'} =~ /^([0-9\.]+)/ ) {
+	 		$self->{'apertures'}{ $opts{'code'} }{'radius'} = $1;
+	 	}
+	 	else {
+	 		$self->error("[aperture] Modifier does not appear to include radius for circle: $opts{'modifiers'}");
+	 	}
+	 }
+	 	 
+		# save
+		
+
  
 	 return 1;
  }
@@ -518,7 +598,7 @@ sub function {
  return 1 if( keys(%opts) < 1 );
  
  if( exists($opts{'func'}) && defined($opts{'func'}) ) {
- 	 if( ! $self->_validateGC($opts{'func'}) ) {
+ 	 if( ! $self->{'ignore'} && ! $self->_validateGC($opts{'func'}) ) {
  	 	 $self->error("[function] Invalid Function Code: $opts{'func'}");
  	 	 return undef;
  	 }
@@ -539,6 +619,8 @@ sub function {
  	 if( ! exists($self->{'apertures'}{ $opts{'aperture'} }) ) {
  	 	 $self->error("[function] Invalid/Unknown Aperture Referenced: $opts{'aperture'}");
  	 }
+ 	 
+ 	 $self->{'curAperture'} = $opts{'aperture'};
  	 
  	 push(@{ $self->{'functions'} }, { 'aperture' => $opts{'aperture'} });
  	 
@@ -563,7 +645,7 @@ sub function {
  }
  
 
- if( exists($opts{'coord'}) ) {
+ if( exists($opts{'coord'}) && defined($opts{'coord'}) ) {
  	 
  	 if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) {
  	 	 $self->error("[function] Operation Code must be provided when Coordinate Data is provided");
@@ -714,29 +796,28 @@ sub _validateGC {
 }
 
 
-sub _processCoords {
 
- my  $self = shift;
- my $coord = shift;
- my  $code = shift;
+sub _parseSize {
+
+ my     $self = shift;
+ my $sizeCode = shift;
  
  my %pos = ();
  my %off = ();
  
- while( $coord =~ s/([XY]{1})([\-0-9]+)// ) {
+ while( $sizeCode =~ s/([XY]{1})([\-0-9]+)// ) {
  	my $axis = $1;
  	my  $loc = $2;
 
 	$pos{$axis} = $loc;
  }
  
- while( $coord =~ s/([IJ]{1})([\-0-9]+)// ) {
+ while( $sizeCode =~ s/([IJ]{1})([\-0-9]+)// ) {
  	 my  $oaxis = $1;
  	 my $offset = $2;
  	 
  	 $off{$oaxis} = $offset;
  }
- 
  
  	# correct lengths and convert values to native floats
   
@@ -768,6 +849,24 @@ sub _processCoords {
  	}			
  }
  
+ return [\%pos, \%off];
+ 
+}
+
+
+
+
+sub _processCoords {
+
+ my  $self = shift;
+ my $coord = shift;
+ my  $code = shift;
+ 
+ my $sizeRet = $self->_parseSize($coord);
+ 
+ my %pos = %{ $sizeRet->[0] };
+ my %off = %{ $sizeRet->[1] };
+
  	# default to last coordinate value for axis
  	# if not supplied (coordinates are modal)
  foreach('X', 'Y') {
@@ -813,9 +912,15 @@ sub _processCoords {
  	 	 $self->_updateCoords($self->{'lastcoord'});
  	 	 $self->{'lastMove'} = 0;
  	 }
- 
- 	 	# update bounding box coordinates if move with aperture open, or flash
- 	 $self->_updateCoords(\%pos);
+ 	 
+ 	 	# ensure that we don't count blank drawing if ignoreBlank is on
+ 	 if( ! $self->{'ignoreBlank'} || 
+ 	     ( exists($self->{'aperture'}{ $self->{'curAperture'} }{'radius'} ) &&
+ 	       $self->{'aperture'}{ $self->{'curAperture'} }{'radius'} > 0.0 ) ) {
+ 	
+ 	 			# update bounding box coordinates if move with aperture open, or flash
+ 	 		$self->_updateCoords(\%pos);
+ 	 }
  }
  else {
  	 	# this is a flash code, we only update at the position of the
@@ -869,6 +974,8 @@ sub _updateCoords {
  }
  
 }
+
+
 
 =head1 AUTHOR
 

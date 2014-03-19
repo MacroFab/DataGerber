@@ -18,13 +18,13 @@ our $VERSION = "0.01";
 
 =head1 NAME
 
-MFGerber::Parser
+Data::Gerber::Parser
 
 =cut
 
 =head1 SYNOPSIS
 
-	my $gbParse = MFGerber::Parser->new();
+	my $gbParse = Data::Gerber::Parser->new();
 	
 	my    $gerb = $gbParse->parse($data);
  	
@@ -37,7 +37,7 @@ MFGerber::Parser
 
 =head1 DESCRIPTION
 
- MFGerber::Parser parses RS-274X (Gerber) data from a file, or from an array
+ Data::Gerber::Parser parses RS-274X (Gerber) data from a file, or from an array
  of lines read from a file, checks for validity, and constructs an MFGerber
  object from its contents.
  
@@ -46,26 +46,46 @@ MFGerber::Parser
 
 =head1 METHODS
 
-=cut
+=cuta
 
 
-=item new
+=item new( OPTS )
 
  Constructor, creates a new instance of the class.
  
- 	my $gbParse = MFGerber::Parser->new();
+ 	my $gbParse = Data::Gerber::Parser->new();
 
+ OPTS is a hash with any of the following keys:
+ 
+ 	ignoreInvalid => if true value, ignore any invalid or deprecated G-codes, false
+ 		  	 throw error.  Default = false.
+ 	
+ 	ignoreBlank   => if true value, ignore blank drawing in calculating box size
+ 			 and drawing bounds
+ 		  
+ for example: 
+ 
+ 	my $gbParse = Data::Gerber::Parser->new( 'ignoreInvalid' => 1 );
+ 	
+ 	
 =cut
 
 sub new {
  my $class = shift;
  my $self = bless({}, $class);
 
- $self->{'error'}      = undef;
- $self->{'gerbObj'}    = undef;
- $self->{'parsestate'} = {};
- $self->{'line'}       = 0;
+ my %opts = @_;
  
+ $self->{'error'}       = undef;
+ $self->{'gerbObj'}     = undef;
+ $self->{'parsestate'}  = {};
+ $self->{'line'}        = 0;
+ $self->{'ignore'}      = 0;
+ $self->{'ignoreBlank'} = 0;
+ 
+ if( exists($opts{'ignoreInvalid'}) && defined($opts{'ignoreInvalid'}) ) {
+ 	$self->{'ignore'} = $opts{'ignore'};
+ }
  
  	# construct dynamic param handler map here...
  	
@@ -131,6 +151,8 @@ sub parse {
 
  	# initialize a new object
  $self->{'gerbObj'} = Data::Gerber->new();
+ $self->{'gerbObj'}->ignoreInvalid( $self->{'ignore'} );
+ $self->{'gerbObj'}->ignoreBlank( $self->{'ignoreBlank'} );
  
  $self->{'parseState'} = {};
 
@@ -160,6 +182,7 @@ sub parse {
  	 }
  	 
  	 while(<$rfh>) {
+ 	 	 print STDERR "DBG: $_";
  	 	 return undef if( ! $self->_parseLine($_) );
  	 }
  	 
@@ -437,7 +460,7 @@ sub _paramAD {
  		$mod = $1;
  	}
  	
- 	if( ! $self->{'gerbObj'}->aperture( 'code' => $aper, 'type' => $type, 'modifiers' => $mod ) ) {
+ 	if( ! $self->{'gerbObj'}->aperture( 'code' => "D$aper", 'type' => $type, 'modifiers' => $mod ) ) {
  		$self->error( $self->{'gerbObj'}->error() ); # error bubbles up
  		return undef;
  	}
