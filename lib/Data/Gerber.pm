@@ -68,6 +68,7 @@ my %gCodes = (
 	'G4'  => 1,
 	'G36'  => 1,
 	'G37'  => 1,
+	'G54'  => 1,
 	'G70'  => 1,
 	'G74'  => 1,
 	'G75'  => 1,
@@ -834,7 +835,7 @@ sub _parseSize {
  					# we are padding the whole numbers
  					# hold any +/- pre-modifiers off
  				my $pre = '';
- 				   $pre = $1 if($_->{$key} =~ s/^[+\-]//);
+ 				   $pre = $1 if($_->{$key} =~ s/^([+\-])//);
  				   
  				$_->{$key} = $pre . "0" x ($fLen - $thisLen) . $_->{$key};
  			}

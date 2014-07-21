@@ -58,7 +58,7 @@ Data::Gerber::Parser
  OPTS is a hash with any of the following keys:
  
  	ignoreInvalid => if true value, ignore any invalid or deprecated G-codes, false
- 		  	 throw error.  Default = false.
+ 		  	 throws error.  Default = false.
  	
  	ignoreBlank   => if true value, ignore blank drawing in calculating box size
  			 and drawing bounds
@@ -86,7 +86,10 @@ sub new {
  if( exists($opts{'ignoreInvalid'}) && defined($opts{'ignoreInvalid'}) ) {
  	$self->{'ignore'} = $opts{'ignore'};
  }
- 
+
+ if( exists($opts{'ignoreBlank'}) && defined($opts{'ignoreBlank'}) ) {
+ 	$self->{'ignoreBlank'} = $opts{'ignoreBlank'};
+ } 
  	# construct dynamic param handler map here...
  	
  $self->{'paramMap'} = {
@@ -297,6 +300,10 @@ sub _parseCommand {
  	 	# that better look like a coordinates + op code combination...
  	 if( $line =~ /^(.+)(D\d+)/ ) {
  	 	 $coord = $1;
+ 	 	 $opcode = $2;
+ 	 }
+ 	 elsif( defined($com) && $com eq 'G54' && $line =~ /^(D\d+)/) {
+ 	 	 # tool select command
  	 	 $opcode = $2;
  	 }
  	 else {
