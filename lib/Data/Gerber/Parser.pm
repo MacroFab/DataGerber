@@ -204,7 +204,7 @@ sub _parseLine {
  
  $self->{'line'}++;
  
- return 1 if( ! defined($line) || ! length($line) );
+ return 1 if( ! defined($line) || ! length($line) || $line =~ /^\s*$/ );
  
  chomp $line;
  
