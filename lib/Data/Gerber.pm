@@ -3,6 +3,8 @@
 # Basic Gerber Operations
 # (c) 2014 MacroFab, Inc.
 # Author: C. A. Church
+# Version 0.02 Contributor: 
+# D. Calderon
 #===========================================================
 
 
@@ -11,7 +13,7 @@ package Data::Gerber;
 use strict;
 use warnings;
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 =head1 NAME
 
@@ -486,7 +488,7 @@ sub format {
  return $self->{'parameters'}{'FS'} if( keys(%opts) < 1 );
  
  if( exists( $opts{'zero'} ) ) {
- 	 if( $opts{'zero'} =~ /^[la]/i ) {
+ 	 if( $opts{'zero'} =~ /^[lt]/i ) {
  	 	 $self->{'parameters'}{'FS'}{'zero'} = $opts{'zero'};
  	 }
  	 else {
@@ -976,6 +978,90 @@ sub _updateCoords {
  
 }
 
+
+#############################################
+# New Classes in Version 0.02
+
+=item convert( OPTS )
+
+ Convert a function of an Object to a master set of parameters, and add to specified object.
+ 
+ Standard functions supported:
+#=over 1
+#=item Aperture Select
+#=item G-Codes
+#=item Moves
+#=item Repeatable Parameter Calls
+#=back
+
+ OPTS works as described in function.
+
+
+=back
+
+=cut
+sub convert
+{	
+	my $self = shift;
+	my %opts = @_;
+	return 1 if( keys(%opts) < 1 );
+	if( exists($opts{'func'}) && defined($opts{'func'}) ) 
+	{
+ 		if( ! $self->{'ignore'} && ! $self->_validateGC($opts{'func'}) ) 
+		{
+ 			$self->error("[function] Invalid Function Code: $opts{'func'}");
+ 			return undef;
+ 		}
+	}
+	if( exists($opts{'op'}) && defined($opts{'op'}) ) 
+	{
+		if( $opts{'op'} !~ /D0?[123]$/ ) 
+		{
+			$self->error("[function] Invalid Operation Code: $opts{'op'}");
+			return undef;
+		}
+	}
+# if aperture specified, only allow aperture select in the function
+	if( exists($opts{'aperture'}) && defined($opts{'aperture'}) ) 
+	{
+# verify that aperture has been defined
+		if( ! exists($self->{'apertures'}{ $opts{'aperture'} }) ) 
+		{
+			$self->error("[function] Invalid/Unknown Aperture Referenced: $opts{'aperture'}");
+		}
+		$self->{'curAperture'} = $opts{'aperture'};
+		push(@{ $self->{'functions'} }, { 'aperture' => $opts{'aperture'} });
+		return 1;
+	}
+# if param specified, only allow parameter call in the function
+	if( exists($opts{'param'}) && defined($opts{'param'}) ) 
+	{
+		push(@{ $self->{'functions'} }, { 'param' => $opts{'param'} });
+		return 1;
+	}
+	my %func;
+	foreach('func', 'coord', 'op', 'comment') 
+	{
+		if( exists( $opts{$_} ) && defined( $opts{$_} ) ) 
+		{
+			$func{$_} = $opts{$_};
+		}
+	}
+	if( exists($opts{'coord'}) && defined($opts{'coord'}) ) 
+	{
+		if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) 
+		{
+			$self->error("[function] Operation Code must be provided when Coordinate Data is provided");
+			return undef;
+		}
+	$func{'xy_coords'} = $self->_processCoords($opts{'coord'}, $opts{'op'});
+	}
+	push(@{ $self->{'functions'} }, \%func);
+	return 1;
+}
+
+
+###################################################
 
 
 =head1 AUTHOR
