@@ -12,6 +12,8 @@ package Data::Gerber;
 
 use strict;
 use warnings;
+use Data::Dumper;
+use Math::Round;
 
 our $VERSION = "0.02";
 
@@ -994,70 +996,216 @@ sub _updateCoords {
 #=item Repeatable Parameter Calls
 #=back
 
- OPTS works as described in function.
+ OPTS consists of a Gerber object with 'parameters' specified
 
 
 =back
 
 =cut
-sub convert
-{	
-	my $self = shift;
-	my %opts = @_;
-	return 1 if( keys(%opts) < 1 );
-	if( exists($opts{'func'}) && defined($opts{'func'}) ) 
-	{
- 		if( ! $self->{'ignore'} && ! $self->_validateGC($opts{'func'}) ) 
-		{
- 			$self->error("[function] Invalid Function Code: $opts{'func'}");
- 			return undef;
- 		}
-	}
-	if( exists($opts{'op'}) && defined($opts{'op'}) ) 
-	{
-		if( $opts{'op'} !~ /D0?[123]$/ ) 
-		{
-			$self->error("[function] Invalid Operation Code: $opts{'op'}");
-			return undef;
+sub convert {	
+ my $self = shift;
+ my $master = shift;
+
+
+###TODO: Insert check to make sure input is correctly formatted gerber object
+
+
+########## Parse each Gerber Function: If header conversion applies, apply it.
+
+ my $count = $self->functions('count'=>1);
+ my $c;
+ my $D;	#Used for listing Aperture codes D10 - D999; spec supports greater
+ my $master_mode= $master->{'parameters'}->{'mode'};
+ my $master_int = $master->{'parameters'}->{'FS'}->{'format'}->{'integer'};  #Should be set to 7
+ my $master_dec = $master->{'parameters'}->{'FS'}->{'format'}->{'decimal'};  #Should be set to 7
+ my $intjoiner;
+ my $decjoiner;
+ my $coord;
+ my $xcoord;
+ my $ycoord;
+ my $icoord;
+ my $jcoord;
+ my $newzero;
+ my $maxLen = '7';
+
+ for ($c = 0; $c< $count; $c = $c+1){
+ 	if (exists( $self->functions('num' => $c)->{'coord'})) {
+# Add back dropped zeroes, if needed (keep more values in during conversions until the final paring down)
+		my $coord = $self->functions('num' => $c)->{'coord'} ;
+
+		if ($self->{'parameters'}->{'FS'}->{'format'}->{'integer'} ne $maxLen) {
+			if ($self->{'parameters'}->{'FS'}->{'format'}->{'integer'} < $maxLen) {
+				$intjoiner = $maxLen - $self->{'parameters'}->{'FS'}->{'format'}->{'integer'};
+				$newzero = "0"x$intjoiner;
+				$coord =~ s/(X|Y|I|J)/$1$newzero/g;
+				$self->functions('num' => $c)->{'coord'} = $coord;
+#				print "Integer Format Converted" . "\n";
+			}
 		}
+		if ($self->{'parameters'}->{'FS'}->{'format'}->{'decimal'} ne $maxLen) {
+			if ($self->{'parameters'}->{'FS'}->{'format'}->{'decimal'} < $maxLen) {
+				$xcoord = '';
+				$ycoord = '';
+				$icoord = '';
+				$jcoord = '';
+				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
+					$decjoiner = $maxLen - $self->{'parameters'}->{'FS'}->{'format'}->{'decimal'};
+					$newzero = "0"x$decjoiner;
+					$coord =~ s/(X|Y|I|J)([0-9]+)/$1$2$newzero/g;
+				}
+				else {
+					if ($coord =~ s/.*X([0-9]+)/$1/){
+						$xcoord = $1;
+						$decjoiner = '14' - (length($xcoord));
+						$newzero = "0"x$decjoiner;
+						$xcoord = "X" . $xcoord . $newzero;
+					}
+					if ($coord =~ s/.*Y([0-9]+)/$1/){
+						$ycoord = $1;
+						$decjoiner = '14' - (length($ycoord));
+						$newzero = "0"x$decjoiner;
+						$ycoord = "Y" . $ycoord . $newzero;
+					}
+					if ($coord =~ s/.*I([0-9]+)/$1/){
+						$icoord = $1;
+						$decjoiner = '14' - (length($icoord));
+						$newzero = "0"x$decjoiner;
+						$icoord = "I" . $icoord . $newzero;
+					}
+					if ($coord =~ s/.*J([0-9]+)/$1/){
+						$jcoord = $1;
+						$decjoiner = '14' - (length($jcoord));
+						$newzero = "0"x$decjoiner;
+						$jcoord = "J" . $jcoord . $newzero;
+					}
+					$coord = $xcoord . $ycoord . $icoord . $jcoord;
+				}
+				$self->functions('num' => $c)->{'coord'} = $coord;
+#				print "Decimal Format Converted" . "\n";
+			}
+		}
+#	print $self->functions('num' => $c)->{'coord'} . "\n";
 	}
+ }
+# Convert MM to IN (if needed)
+ for ($c = 0; $c< $count; $c = $c+1){
+ 	if (exists( $self->functions('num' => $c)->{'coord'})) {
+		if (lc $self->{'parameters'}->{'mode'} ne lc $master_mode){
+			$coord = $self->functions('num' => $c)->{'coord'};
+			$xcoord = '';
+			$ycoord = '';
+			$icoord = '';
+			$jcoord = '';
+			if ($coord =~ m/X[0-9]+/){
+				my $X = substr($&,1);
+				$X = round($X * (25.4));
+				my $Xlength = length($X);
+				if ($Xlength > 2*$maxLen){
+					$self->error("Coordinate too large to format using Gerber");
+				}
+				my $pre = '';
+ 				$pre = $1 if ($X =~ s/^([+\-])//);
+ 				$X = $pre . "0" x (2*$maxLen - $Xlength) . $X;
+				$xcoord = "X" . $X;
+			}
+			if ($coord =~ m/Y[0-9]+/){
+				my $Y = substr($&,1);
+				$Y = round($Y * (25.4));
+				my $Ylength = length($Y);
+				if ($Ylength > 2*$maxLen){
+					$self->error("Coordinate too large to format using Gerber");
+				}
+				my $pre = '';
+ 				$pre = $1 if ($Y =~ s/^([+\-])//);
+ 				$Y = $pre . "0" x (2*$maxLen - $Ylength) . $Y;
+				$ycoord = "Y" . $Y;
+			}
+			if ($coord =~ m/I[0-9]+/){
+				my $I = substr($&,1);
+				$I = round($I * (25.4));
+				my $Ilength = length($I);
+				if ($Ilength > 2*$maxLen){
+					$self->error("Coordinate too large to format using Gerber");
+				}
+				my $pre = '';
+ 				$pre = $1 if ($I =~ s/^([+\-])//);
+ 				$I = $pre . "0" x (2*$maxLen - $Ilength) . $I;
+				$icoord = "I" . $I;
+			}
+			if ($coord =~ m/J[0-9]+/){
+				my $J = substr($&,1);
+				$J = round($J * (25.4));
+				my $Jlength = length($J);
+				if ($Jlength > 2*$maxLen){
+					$self->error("Coordinate too large to format using Gerber");
+				}
+				my $pre = '';
+ 				$pre = $1 if ($J =~ s/^([+\-])//);
+ 				$J = $pre . "0" x (2*$maxLen - $Jlength) . $J;
+				$jcoord = "J" . $J;
+			}
+			$self->functions('num' => $c)->{'coord'} = $xcoord . $ycoord . $icoord . $jcoord;
+		}
+#		print $self->functions('num' => $c)->{'coord'} . "\n"; 
+ 	}
+ }
+
+######### Editing Modifiers in the Apertures for each individual Gerber File
+ foreach my $apt ($self->{'apertures'}){
+	print Dumper($apt);
+ } 
+ 
+ $self->{'parameters'}->{'FS'}->{'format'}->{'integer'} = $master_int;
+ $self->{'parameters'}->{'FS'}->{'format'}->{'decimal'} = $master_dec;
+ print $count . "\n";
+ 
+
+ 
+
+# return 1 if( keys($opts) < 1 );
+# if( exists($opts->{'functions'}) && defined($opts->{'functions'}) ) {
+ #		if( ! $self->{'ignore'} && ! $self->_validateGC($opts{'func'}) ) 
+#		{
+ #			$self->error("[function] Invalid Function Code: $opts{'func'}");
+# 			return undef;
+# 		}
+# }
+# if( exists($opts{'op'}) && defined($opts{'op'}) ) {
+# 	if( $opts{'op'} !~ /D0?[123]$/ ) {
+#		$self->error("[function] Invalid Operation Code: $opts{'op'}");
+#		return undef;
+#	}
+# }
 # if aperture specified, only allow aperture select in the function
-	if( exists($opts{'aperture'}) && defined($opts{'aperture'}) ) 
-	{
+# if( exists($opts{'aperture'}) && defined($opts{'aperture'}) ) {
 # verify that aperture has been defined
-		if( ! exists($self->{'apertures'}{ $opts{'aperture'} }) ) 
-		{
-			$self->error("[function] Invalid/Unknown Aperture Referenced: $opts{'aperture'}");
-		}
-		$self->{'curAperture'} = $opts{'aperture'};
-		push(@{ $self->{'functions'} }, { 'aperture' => $opts{'aperture'} });
-		return 1;
-	}
+#	if( ! exists($self->{'apertures'}{ $opts{'aperture'} }) ) {
+#		$self->error("[function] Invalid/Unknown Aperture Referenced: $opts{'aperture'}");
+#	}
+#	$self->{'curAperture'} = $opts{'aperture'};
+#	push(@{ $self->{'functions'} }, { 'aperture' => $opts{'aperture'} });
+#	return 1;
+# }
 # if param specified, only allow parameter call in the function
-	if( exists($opts{'param'}) && defined($opts{'param'}) ) 
-	{
-		push(@{ $self->{'functions'} }, { 'param' => $opts{'param'} });
-		return 1;
-	}
-	my %func;
-	foreach('func', 'coord', 'op', 'comment') 
-	{
-		if( exists( $opts{$_} ) && defined( $opts{$_} ) ) 
-		{
-			$func{$_} = $opts{$_};
-		}
-	}
-	if( exists($opts{'coord'}) && defined($opts{'coord'}) ) 
-	{
-		if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) 
-		{
-			$self->error("[function] Operation Code must be provided when Coordinate Data is provided");
-			return undef;
-		}
-	$func{'xy_coords'} = $self->_processCoords($opts{'coord'}, $opts{'op'});
-	}
-	push(@{ $self->{'functions'} }, \%func);
-	return 1;
+# if( exists($opts{'param'}) && defined($opts{'param'}) ) {
+# 	push(@{ $self->{'functions'} }, { 'param' => $opts{'param'} });
+#	return 1;
+# }
+# my %func;
+# foreach('func', 'coord', 'op', 'comment') {
+# 	if( exists( $opts{$_} ) && defined( $opts{$_} ) ) {
+#		$func{$_} = $opts{$_};
+#	}
+# }
+# if( exists($opts{'coord'}) && defined($opts{'coord'}) ) {
+#	if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) {
+#		$self->error("[function] Operation Code must be provided when Coordinate Data is provided");
+#		return undef;
+#	}
+#	$func{'xy_coords'} = $self->_processCoords($opts{'coord'}, $opts{'op'});
+# }
+# push(@{ $self->{'functions'} }, \%func);
+# return 1;
 }
 
 
