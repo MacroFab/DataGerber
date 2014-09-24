@@ -1070,7 +1070,7 @@ sub _moCoordconvert{
 
 
 
-=item convert( MASTER )
+=item convert( MASTER)
 
  Convert a function of an Object to a master set of parameters, and add to specified object.
  
@@ -1092,44 +1092,27 @@ sub _moCoordconvert{
 sub convert {	
  my $self = shift;
  my $master = shift;
- my $OptCoord = shift;
-
 ########## Parse each Gerber Function: If header conversion applies, apply it.
 
 ### Variable Initialization
- my $apt;
- my $count = $self->functions('count'=>1);
- my $D;									     #Used for listing Aperture codes D10 - D999; spec supports greater
- my $masterapt;
- my $master_equivalence_check;
+ my $apt; my $D;						#Used for listing Aperture codes D10 - D999; spec supports greater
+ my $masterapt; my $master_equivalence_check;
  my $master_mode= $master->{'parameters'}{'mode'};
  my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 7
  my $master_dec = $master->{'parameters'}{'FS'}{'format'}{'decimal'};  #Should be set to 7
  my $s_func;
- my $mod;
- my $intjoiner;
- my $decjoiner;
- my $coord;
- my $xcoord;
- my $ycoord;
- my $icoord;
- my $jcoord;
- my $newzero;
+ my $mod; my $intjoiner; my $decjoiner; my $newzero;
+ my $coord; my $xcoord; my $ycoord; my $icoord; my $jcoord;
  my $maxLen = '7';
  my $conversionlist;
- my $SR;
- my @SRarray;
+ my $SR; my @SRarray;
  
- if (exists( $master->{'conversionlist'})) {
- 	$conversionlist = $master->{'conversionlist'};
- }
+ if (exists( $master->{'conversionlist'})) { $conversionlist = $master->{'conversionlist'};}
  else {
 	$master->{'conversionlist'} = {};
 	$conversionlist = {};
  }
-
 ###TODO: Insert check to make sure input is correctly formatted gerber object
-
 
 ### Step 1A: Edit Modifiers in the Apertures for each individual Gerber File
 
@@ -1156,8 +1139,7 @@ sub convert {
 							########### If it's in the master file, is a $mod, and the $mod is EQUAL 
 							########### to ANY master aperture already defined:
 							$master_equivalence_check = '1';
-							last;
-							############# Exit for loop
+							last;############# Exit for loop
 						}
 					}
 				}
@@ -1175,7 +1157,7 @@ sub convert {
 					}
 				}
 			}
-			else{				######### If the aperture type is NOT the same:
+			else {				######### If the aperture type is NOT the same:
 ##### TODO REPLACE WITH FOREACH
 				for ($D = 10; $D<1000; $D = $D+1) {	
 					if (! exists($master->{'apertures'}{"D".$D}) && ! exists($self->{'apertures'}{"D".$D})) {
@@ -1187,8 +1169,8 @@ sub convert {
 				}
 			}
 		}
-		else {						
-			$mod = $self->_aperturemodconvert($apt,$master);########### Define the $mod: Circle, Modifier, or doesn't need $mod
+		else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
+			$mod = $self->_aperturemodconvert($apt,$master);
 			foreach $masterapt (keys $master->{'apertures'}) {
 				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
 					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
@@ -1207,12 +1189,10 @@ sub convert {
 		}
 	}
  } 
-
-
 # For every Function
  foreach $s_func (keys $self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-### Step 2A: Add back dropped zeroes, if needed (keep more values in during conversions until the final paring down)
+							### Step 2A: Add back dropped zeroes, if needed
 		my $coord = $self->{'functions'}[$s_func]{'coord'} ;
 		if ($self->{'parameters'}{'FS'}{'format'}{'integer'} ne $maxLen) {
 			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
@@ -1225,10 +1205,9 @@ sub convert {
 		}
 		if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} ne $maxLen) {
 			if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} < $maxLen) {
-				$xcoord = '';
-				$ycoord = '';
-				$icoord = '';
-				$jcoord = '';
+
+				$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
+
 				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
 					$decjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'decimal'};
 					$newzero = "0"x$decjoiner;
@@ -1247,15 +1226,13 @@ sub convert {
 		}
 	}
  }
-### Step 2B: Convert MM to IN (if needed)
- foreach $s_func (keys $self->{'functions'}) {
+ foreach $s_func (keys $self->{'functions'}) {		### Step 2B: Convert MM to IN (if needed)
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
 			$coord = $self->{'functions'}[$s_func]{'coord'};
-			$xcoord = '';
-			$ycoord = '';
-			$icoord = '';
-			$jcoord = '';
+
+			$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
+
 			if ($coord =~ m/X[0-9]+/){ $xcoord = $self->_moCoordconvert($maxLen,$&)};
 			if ($coord =~ m/Y[0-9]+/){ $ycoord = $self->_moCoordconvert($maxLen,$&)};
 			if ($coord =~ m/I[0-9]+/){ $icoord = $self->_moCoordconvert($maxLen,$&)};
@@ -1264,21 +1241,21 @@ sub convert {
 		}
  	}
  }
-
-### Step 2C: Edit Function Codes for each individual Gerber File from conversionlist
-
- foreach $s_func (keys $self->{'functions'}) {
-#	For each function in the hash, if the function contains coordinates, process those coordinates in order to update the MO values. Otherwise, ignore it.
+ foreach $s_func (keys $self->{'functions'}) {		### Step 2C: Edit Function Codes for each individual Gerber File from conversionlist
+							#	For each function in the hash, if the function contains coordinates, 
+							#process those coordinates in order to update the MO values. Otherwise, ignore it.
 	if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
  		$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
 	}
-#	For each function in the hash, if the function is an aperture listed in the conversionlist, convert it. Otherwise, ignore it.
+							#	For each function in the hash, if the function is an aperture 
+							# listed in the conversionlist, convert it. Otherwise, ignore it.
 	if (exists($self->{'functions'}[$s_func]{'aperture'}) && defined($self->{'functions'}[$s_func]{'aperture'})){
 		if (exists($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}}) && defined($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}} )) {
 			$self->{'functions'}[$s_func]{'aperture'} = $conversionlist->{$self->{'functions'}[$s_func]{'aperture'}};
 		}
 	}
-#      For each function in the hash, if the function is an SR parameter call, and the units of MO don't agree with master, Convert. Otherwise, ignore it.
+							#      For each function in the hash, if the function is an SR parameter call, 
+							# and the units of MO don't agree with master, Convert. Otherwise, ignore it.
 	if (exists($self->{'functions'}[$s_func]{'param'}) && defined($self->{'functions'}[$s_func]{'param'})){
 		if ($self->{'functions'}[$s_func]{'param'} =~ m/^SR.*/) {
 			if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
@@ -1294,37 +1271,39 @@ sub convert {
 		}
 	}
  }
+### Step 3: Make final Format changes, and Append Entire Functions Object to Master
+ $master->{'conversionlist'} = $conversionlist;
+ $self->{'parameters'}{'FS'}{'format'}{'integer'} = $master_int;
+ $self->{'parameters'}{'FS'}{'format'}{'decimal'} = $master_dec;
+ $self->{'parameters'}{'mode'} = $master_mode;
+}
+
+###################################################
+
+sub translate {
+
+ my $self = shift;
+ my $TransCoord = shift;
+
+ my $s_func;
 
 ### Step 2D: Add Offsets to Coordinates,
+	### Make this its own Sub-routine called right at this moment
 	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
  foreach $s_func (keys $self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-		...
+#		...
 #		@SRarray = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
 #		splice @SRarray, 0, 1;
 #		foreach my $submodifier (keys @SRarray) {
 #			if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
-#				$SRarray[$submodifier] = $SRarray[$submodifier] + OptCoord[s_func];
+#				$SRarray[$submodifier] = $SRarray[$submodifier] + TransCoord[s_func];
 #			}
 #		}
 	}
  }
 
-### Step 3: Make final Format changes, and Append Entire Functions Object to Master
-
- $master->{'conversionlist'} = $conversionlist;
-
- 
- $self->{'parameters'}{'FS'}{'format'}{'integer'} = $master_int;
- $self->{'parameters'}{'FS'}{'format'}{'decimal'} = $master_dec;
- $self->{'parameters'}{'mode'} = $master_mode;
- print $count . "\n";
- 
 }
-
-
-###################################################
-
 
 =head1 AUTHOR
 
