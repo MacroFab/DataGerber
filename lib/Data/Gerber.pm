@@ -984,20 +984,107 @@ sub _updateCoords {
 #############################################
 # New Classes in Version 0.02
 
-=item convert( OPTS )
+####### Aperture Conversion: Step 1 subclasses
+
+sub _aperturemodconvert {		#Checks
+ my $self = shift;
+ my $apt = shift;
+ my $master = shift;
+
+ my $mod;
+ my $modifier;
+ my @modarray;
+ my $master_mode= $master->{'parameters'}{'mode'};
+
+ if ($self->{'apertures'}{$apt}{'type'} eq "C") {
+	$mod = 'diameter';
+ 	if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
+		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} *25.4;   #Unique to Circle
+	}
+ }
+ if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
+				############ Perform Unit Conversions if MO units don't agree
+					## If Circle, 1 submodifier, 1 optional
+					## If Rectangle or Obround, 2 submodifiers, 1 optional
+					## If Polygon, Dealt with uniquely above
+	$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+	@modarray = split(/X/,$modifier);
+	foreach my $submodifier (keys @modarray) {
+		$modarray[$submodifier] = $modarray[$submodifier] * 25.4;
+	}
+
+	$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+	$mod = 'modifiers';
+ }
+ else {				# Do nothing if MO units DO agree
+	$mod = 'modifiers';
+ }
+ if (! exists($self->{'apertures'}{$apt}{'modifiers'})) {
+				 ######### If it's in the master file, and doesn't need modifiers, : TODO 
+				 ############ Find new D-Code, and add to conversion list TODO	
+				 ############ break out of logic
+ }
+ return $mod;
+}
+###### Function Conversion: Step 2A subclasses
+sub _FSdecconvert{
+
+ my $self = shift;
+ my $Var = shift;
+ my $Char = shift;
+ my $coord;
+
+ my $newzero;
+ my $decjoiner;
+
+ $decjoiner = '14' - (length($Var));
+ $newzero = "0"x$decjoiner;
+ $coord = $Char . $Var . $newzero;
+ return $coord;
+
+}
+###### Function Conversion: Step 2B subclasses
+sub _moCoordconvert{
+ my $self = shift;
+ my $maxLen = shift;
+ my $Varstring = shift;
+ my $coordcheck = shift;
+ my $Var;
+
+ my $coord;
+ my $Char = substr($Varstring,0,1);
+ $Var = substr($Varstring,1);
+
+ $Var = round($Var * (25.4));
+ my $Varlength = length($Var);
+ if ($Varlength > 2*$maxLen){
+	$self->error("Coordinate too large to format using Gerber");
+ }
+ my $pre = '';
+ $pre = $1 if ($Var =~ s/^([+\-])//);
+ $Var = $pre . "0" x (2*$maxLen - $Varlength) . $Var;
+ $coord = $Char . $Var;
+ return $coord;
+}
+
+
+
+=item convert( MASTER )
 
  Convert a function of an Object to a master set of parameters, and add to specified object.
  
  Standard functions supported:
-#=over 1
-#=item Aperture Select
-#=item G-Codes
-#=item Moves
-#=item Repeatable Parameter Calls
-#=back
+=over 1
+=item Aperture Select
+=item G-Codes
+=item Moves
+=item Repeatable Parameter Calls
+=back
 
- OPTS consists of a Gerber object with 'parameters' specified
+ Warning: No Support for Aperture Macros!
 
+ MASTER consists of a Gerber object with 'master parameters' pre-specified
 
 =back
 
@@ -1005,19 +1092,20 @@ sub _updateCoords {
 sub convert {	
  my $self = shift;
  my $master = shift;
-
+ my $OptCoord = shift;
 
 ########## Parse each Gerber Function: If header conversion applies, apply it.
 
 ### Variable Initialization
  my $apt;
  my $count = $self->functions('count'=>1);
- my $c;
  my $D;									     #Used for listing Aperture codes D10 - D999; spec supports greater
  my $masterapt;
- my $master_mode= $master->{'parameters'}->{'mode'};
- my $master_int = $master->{'parameters'}->{'FS'}->{'format'}->{'integer'};  #Should be set to 7
- my $master_dec = $master->{'parameters'}->{'FS'}->{'format'}->{'decimal'};  #Should be set to 7
+ my $master_equivalence_check;
+ my $master_mode= $master->{'parameters'}{'mode'};
+ my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 7
+ my $master_dec = $master->{'parameters'}{'FS'}{'format'}{'decimal'};  #Should be set to 7
+ my $s_func;
  my $mod;
  my $intjoiner;
  my $decjoiner;
@@ -1029,6 +1117,8 @@ sub convert {
  my $newzero;
  my $maxLen = '7';
  my $conversionlist;
+ my $SR;
+ my @SRarray;
  
  if (exists( $master->{'conversionlist'})) {
  	$conversionlist = $master->{'conversionlist'};
@@ -1040,264 +1130,196 @@ sub convert {
 
 ###TODO: Insert check to make sure input is correctly formatted gerber object
 
-### Start Main For Loops
 
- for ($c = 0; $c< $count; $c = $c+1){
- 	if (exists( $self->functions('num' => $c)->{'coord'})) {
-### Step 1: Add back dropped zeroes, if needed (keep more values in during conversions until the final paring down)
-		my $coord = $self->functions('num' => $c)->{'coord'} ;
+### Step 1A: Edit Modifiers in the Apertures for each individual Gerber File
 
-		if ($self->{'parameters'}->{'FS'}->{'format'}->{'integer'} ne $maxLen) {
-			if ($self->{'parameters'}->{'FS'}->{'format'}->{'integer'} < $maxLen) {
-				$intjoiner = $maxLen - $self->{'parameters'}->{'FS'}->{'format'}->{'integer'};
+#For every aperture,
+ foreach $apt (keys $self->{'apertures'}){
+        ########################################## In Conversion List
+	if (exists($conversionlist->{$apt}) && defined($conversionlist->{$apt} )) {
+							##### If aperture is in conversion list, then:
+							########### Force the current aperture Code to be equal to the master
+		$self->{'apertures'}{$apt} = $master->{'apertures'}{$conversionlist->{$apt}};
+	}
+        ########################################## Not in Conversion List
+ 	else {						##### If it is NOT in the conversion list, then:						
+		if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
+							####### If the aperture code exists in the master file:
+			if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
+							######### and If the aperture type is the same:
+				$mod = $self->_aperturemodconvert($apt,$master);
+							########### Define the $mod: Circle, Modifier, or doesn't need $mod
+				$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
+				foreach $masterapt (keys $master->{'apertures'}) {
+					if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
+						if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
+							########### If it's in the master file, is a $mod, and the $mod is EQUAL 
+							########### to ANY master aperture already defined:
+							$master_equivalence_check = '1';
+							last;
+							############# Exit for loop
+						}
+					}
+				}
+				if ($master_equivalence_check == 0) {
+##### TODO REPLACE WITH FOREACH
+					for ($D = 10; $D<1000; $D = $D+1) {	
+						if (! exists($master->{'apertures'}{"D".$D}) && ! exists($self->{'apertures'}{"D".$D})) {
+							########### If it's in the master file, is a $mod, and the $mod is 
+							########### NOT EQUAL to ANY master aperture already defined:
+							$master->{'apertures'}{'D'.$D} = $self->{'apertures'}{$apt};
+							$conversionlist->{$apt} = 'D'.$D;
+							last;
+							############ Find new D-Code, convert, and add to conversion list		
+						}
+					}
+				}
+			}
+			else{				######### If the aperture type is NOT the same:
+##### TODO REPLACE WITH FOREACH
+				for ($D = 10; $D<1000; $D = $D+1) {	
+					if (! exists($master->{'apertures'}{"D".$D}) && ! exists($self->{'apertures'}{"D".$D})) {
+						$master->{'apertures'}{'D'.$D} = $self->{'apertures'}{$apt};
+						$conversionlist->{$apt} = "D".$D;
+						last;
+							############ Find new D-Code, convert TODO, and add to conversion list		
+					}
+				}
+			}
+		}
+		else {						
+			$mod = $self->_aperturemodconvert($apt,$master);########### Define the $mod: Circle, Modifier, or doesn't need $mod
+			foreach $masterapt (keys $master->{'apertures'}) {
+				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
+					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
+							######### If it's NOT in the master file, is a $type, and the $type's $mod is 
+							######### EQUAL to ANY master aperture already defined:
+						$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
+						$conversionlist->{$apt} = $masterapt;
+							###########Force the current aperture to be equal to the master, and add to conversionlist
+					}
+				}
+			}				
+			if (! exists($conversionlist->{$apt})) {
+							######### If none of the aperture values in the master equal the current apertures, add to master
+				$master->{'apertures'}{$apt} = $self->{'apertures'}{$apt};
+			}			
+		}
+	}
+ } 
+
+
+# For every Function
+ foreach $s_func (keys $self->{'functions'}) {
+ 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
+### Step 2A: Add back dropped zeroes, if needed (keep more values in during conversions until the final paring down)
+		my $coord = $self->{'functions'}[$s_func]{'coord'} ;
+		if ($self->{'parameters'}{'FS'}{'format'}{'integer'} ne $maxLen) {
+			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
+				$intjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'integer'};
 				$newzero = "0"x$intjoiner;
 				$coord =~ s/(X|Y|I|J)/$1$newzero/g;
-				$self->functions('num' => $c)->{'coord'} = $coord;
+				$self->{'functions'}[$s_func]{'coord'} = $coord;
 #				print "Integer Format Converted" . "\n";
 			}
 		}
-		if ($self->{'parameters'}->{'FS'}->{'format'}->{'decimal'} ne $maxLen) {
-			if ($self->{'parameters'}->{'FS'}->{'format'}->{'decimal'} < $maxLen) {
+		if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} ne $maxLen) {
+			if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} < $maxLen) {
 				$xcoord = '';
 				$ycoord = '';
 				$icoord = '';
 				$jcoord = '';
 				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					$decjoiner = $maxLen - $self->{'parameters'}->{'FS'}->{'format'}->{'decimal'};
+					$decjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'decimal'};
 					$newzero = "0"x$decjoiner;
 					$coord =~ s/(X|Y|I|J)([0-9]+)/$1$2$newzero/g;
 				}
 				else {
-					if ($coord =~ s/.*X([0-9]+)/$1/){
-						$xcoord = $1;
-						$decjoiner = '14' - (length($xcoord));
-						$newzero = "0"x$decjoiner;
-						$xcoord = "X" . $xcoord . $newzero;
-					}
-					if ($coord =~ s/.*Y([0-9]+)/$1/){
-						$ycoord = $1;
-						$decjoiner = '14' - (length($ycoord));
-						$newzero = "0"x$decjoiner;
-						$ycoord = "Y" . $ycoord . $newzero;
-					}
-					if ($coord =~ s/.*I([0-9]+)/$1/){
-						$icoord = $1;
-						$decjoiner = '14' - (length($icoord));
-						$newzero = "0"x$decjoiner;
-						$icoord = "I" . $icoord . $newzero;
-					}
-					if ($coord =~ s/.*J([0-9]+)/$1/){
-						$jcoord = $1;
-						$decjoiner = '14' - (length($jcoord));
-						$newzero = "0"x$decjoiner;
-						$jcoord = "J" . $jcoord . $newzero;
-					}
+					if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X")};
+					if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y")};
+					if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I")};
+					if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J")};
 					$coord = $xcoord . $ycoord . $icoord . $jcoord;
 				}
-				$self->functions('num' => $c)->{'coord'} = $coord;
+				$self->{'functions'}[$s_func]{'coord'} = $coord;
 #				print "Decimal Format Converted" . "\n";
 			}
 		}
-#	print $self->functions('num' => $c)->{'coord'} . "\n";
 	}
  }
-
-### Step 2: Convert MM to IN (if needed)
- for ($c = 0; $c< $count; $c = $c+1){
- 	if (exists( $self->functions('num' => $c)->{'coord'})) {
-		if (lc $self->{'parameters'}->{'mode'} ne lc $master_mode){
-			$coord = $self->functions('num' => $c)->{'coord'};
+### Step 2B: Convert MM to IN (if needed)
+ foreach $s_func (keys $self->{'functions'}) {
+ 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
+		if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
+			$coord = $self->{'functions'}[$s_func]{'coord'};
 			$xcoord = '';
 			$ycoord = '';
 			$icoord = '';
 			$jcoord = '';
-			if ($coord =~ m/X[0-9]+/){
-				my $X = substr($&,1);
-				$X = round($X * (25.4));
-				my $Xlength = length($X);
-				if ($Xlength > 2*$maxLen){
-					$self->error("Coordinate too large to format using Gerber");
-				}
-				my $pre = '';
- 				$pre = $1 if ($X =~ s/^([+\-])//);
- 				$X = $pre . "0" x (2*$maxLen - $Xlength) . $X;
-				$xcoord = "X" . $X;
-			}
-			if ($coord =~ m/Y[0-9]+/){
-				my $Y = substr($&,1);
-				$Y = round($Y * (25.4));
-				my $Ylength = length($Y);
-				if ($Ylength > 2*$maxLen){
-					$self->error("Coordinate too large to format using Gerber");
-				}
-				my $pre = '';
- 				$pre = $1 if ($Y =~ s/^([+\-])//);
- 				$Y = $pre . "0" x (2*$maxLen - $Ylength) . $Y;
-				$ycoord = "Y" . $Y;
-			}
-			if ($coord =~ m/I[0-9]+/){
-				my $I = substr($&,1);
-				$I = round($I * (25.4));
-				my $Ilength = length($I);
-				if ($Ilength > 2*$maxLen){
-					$self->error("Coordinate too large to format using Gerber");
-				}
-				my $pre = '';
- 				$pre = $1 if ($I =~ s/^([+\-])//);
- 				$I = $pre . "0" x (2*$maxLen - $Ilength) . $I;
-				$icoord = "I" . $I;
-			}
-			if ($coord =~ m/J[0-9]+/){
-				my $J = substr($&,1);
-				$J = round($J * (25.4));
-				my $Jlength = length($J);
-				if ($Jlength > 2*$maxLen){
-					$self->error("Coordinate too large to format using Gerber");
-				}
-				my $pre = '';
- 				$pre = $1 if ($J =~ s/^([+\-])//);
- 				$J = $pre . "0" x (2*$maxLen - $Jlength) . $J;
-				$jcoord = "J" . $J;
-			}
-			$self->functions('num' => $c)->{'coord'} = $xcoord . $ycoord . $icoord . $jcoord;
+			if ($coord =~ m/X[0-9]+/){ $xcoord = $self->_moCoordconvert($maxLen,$&)};
+			if ($coord =~ m/Y[0-9]+/){ $ycoord = $self->_moCoordconvert($maxLen,$&)};
+			if ($coord =~ m/I[0-9]+/){ $icoord = $self->_moCoordconvert($maxLen,$&)};
+			if ($coord =~ m/J[0-9]+/){ $jcoord = $self->_moCoordconvert($maxLen,$&)};
+			$self->{'functions'}[$s_func]{'coord'} = $xcoord . $ycoord . $icoord . $jcoord;
 		}
-#		print $self->functions('num' => $c)->{'coord'} . "\n"; 
  	}
  }
 
-### Step 3: Edit Modifiers in the Apertures for each individual Gerber File
+### Step 2C: Edit Function Codes for each individual Gerber File from conversionlist
 
-#For every aperture,
-###First test if the aperture is included in the running conversion list
-##### If it is, then: TODO
-
-########### Force the current aperture to be equal to the master, and add to conversionlist
-
-##### If it is not in the conversion list, then:
-
-####### If the aperture code exists in the master file:
-
-######### If it's in the master file, is a circle, and the diameter is NOT EQUAL to ANY master aperture already defined:
-############ Find new D-Code, and add to conversion list
-
-######### If it's in the master file, and doesn't need modifiers, : TODO 
-############ Find new D-Code, and add to conversion list TODO
-
-######### If it's in the master file, has modifiers, and modifiers NOT EQUAL to modifiers of ANY master aperture already defined:
-############ Find new D-Code, and add to conversion list
-
-####### If the aperture does not exist in the master:
-
-######### If it's NOT in the master file, is a circle, and the diameter is EQUAL to ANY master aperture already defined:
-########### Force the current aperture to be equal to the master, and add to conversionlist
-
-######### If it's NOT in the master file, and doesn't need modifiers: TODO 
-########### Force the current aperture to be equal to the master, and add to conversionlist
-
-######### If it's NOT in the master file, has modifiers, and modifiers NOT EQUAL to modifiers of ANY master aperture already defined:
-########### Force the current aperture to be equal to the master, and add to conversionlist
-
-
-
-#For every aperture,
-
- foreach $apt (keys $self->{'apertures'}){
-	if (defined($conversionlist->{$apt} )) {	###First test if the aperture is included in the running conversion list
-							##### If it is, then: TODO
-							########### Force the current aperture Code to be equal to the master
-	#	$self->{'apertures'}->{$apt} = $master->{'apertures'}->{$apt};
-		print "Winner\n";
-							########### Convert Function Codes TODO
+ foreach $s_func (keys $self->{'functions'}) {
+#	For each function in the hash, if the function contains coordinates, process those coordinates in order to update the MO values. Otherwise, ignore it.
+	if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
+ 		$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
 	}
- 	else {
-							##### If it is not in the conversion list, then:
-		if (exists($master->{'apertures'}->{$apt}) && defined($master->{'apertures'}->{$apt})){
-							####### If the aperture code exists in the master file:
-			if ($self->{'apertures'}->{$apt}->{'type'} eq $master->{'apertures'}->{$apt}->{'type'}) {
-							######### If the aperture type is the same:
-							########### Define the $mod: Circle, Modifier, or doesn't need $mod
-				if ($self->{'apertures'}->{$apt}->{'type'} eq "C") {
-					$mod = "diameter";
-				}
-				elsif (! exists($self->{'apertures'}->{$apt}->{'modifiers'})) {
-							######### If it's in the master file, and doesn't need modifiers, : TODO 
-							############ Find new D-Code, and add to conversion list TODO	
-							############ break out of logic
-				}
-				else {
-					$mod = "modifiers";
-				}
-				foreach $masterapt (keys $master->{'apertures'}) {
-							########### If it's in the master file, is a $mod, and the $mod is EQUAL 
-							########### to ANY master aperture already defined:
-					if ($self->{'apertures'}->{$apt}->{$mod} eq $master->{'apertures'}->{$masterapt}->{$mod}) {
-							############# Exit for loop TODO
-						last;
-					}
-							########### If it's in the master file, is a $mod, and the $mod is 
-							########### NOT EQUAL to ANY master aperture already defined:
-					else {	
-						for ($D = 10; $D<1000; $D = $D+1) {	
-							############ Find new D-Code, convert TODO, and add to conversion list		
-							if (! exists($master->{'apertures'}->{"D".$D})) {
-								$master->{'apertures'}->{'D'.$D} = $self->{'apertures'}->{$apt};
-								$conversionlist->{$apt} = "1";
-								last;
-							}
-						}
-					}
-				}
-			}
-			else{
-							######### If the aperture type is NOT the same:
-				for ($D = 10; $D<1000; $D = $D+1) {	
-							############ Find new D-Code, convert TODO, and add to conversion list		
-					if (! exists($master->{'apertures'}->{"D".$D})) {
-						$master->{'apertures'}->{'D'.$D} = $self->{'apertures'}->{$apt};
-						$conversionlist->{$apt} = "1";
-						last;
-					}
-				}
-			}
+#	For each function in the hash, if the function is an aperture listed in the conversionlist, convert it. Otherwise, ignore it.
+	if (exists($self->{'functions'}[$s_func]{'aperture'}) && defined($self->{'functions'}[$s_func]{'aperture'})){
+		if (exists($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}}) && defined($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}} )) {
+			$self->{'functions'}[$s_func]{'aperture'} = $conversionlist->{$self->{'functions'}[$s_func]{'aperture'}};
 		}
-		else {
-
-							########### Define the $mod: Circle, Modifier, or doesn't need $mod
-			if ($self->{'apertures'}->{$apt}->{'type'} eq "C") {
-				$mod = "diameter";
-			}
-			elsif (! exists($self->{'apertures'}->{$apt}->{'modifiers'})) {
-							######### If it's in the master file, and doesn't need modifiers, : TODO 
-							###########Force the current aperture to be equal to the master, and add to conversionlist TODO
-							############ break out of logic
-			}
-			else {
-				$mod = "modifiers";
-			}
-			foreach $masterapt (keys $master->{'apertures'}) {
-				if ($self->{'apertures'}->{$apt}->{'type'} eq $master->{'apertures'}->{$masterapt}->{'type'}) {
-							######### If it's NOT in the master file, is a $type, and the $type's $mod is 
-							######### EQUAL to ANY master aperture already defined:
-					if ($self->{'apertures'}->{$apt}->{$mod} eq $master->{'apertures'}->{$masterapt}->{$mod}) {
-							###########Force the current aperture to be equal to the master, and add to conversionlist
-						$self->{'apertures'}->{$apt} = $master->{'apertures'}->{$masterapt};
-						$conversionlist->{$masterapt} = "1";
+	}
+#      For each function in the hash, if the function is an SR parameter call, and the units of MO don't agree with master, Convert. Otherwise, ignore it.
+	if (exists($self->{'functions'}[$s_func]{'param'}) && defined($self->{'functions'}[$s_func]{'param'})){
+		if ($self->{'functions'}[$s_func]{'param'} =~ m/^SR.*/) {
+			if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
+				@SRarray = split(/(I|J)/,$self->{'functions'}[$s_func]{'param'});
+				splice @SRarray, 0, 1;
+				foreach my $submodifier (keys @SRarray) {
+					if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
+						$SRarray[$submodifier] = $SRarray[$submodifier] * 25.4;
 					}
 				}
-			#########TODO: If none of the aperture values in the master equal the current apertures, add to master
+				$self->{'functions'}[$s_func]{'param'} = join('',@SRarray);
 			}
 		}
 	}
- } 
+ }
+
+### Step 2D: Add Offsets to Coordinates,
+	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
+ foreach $s_func (keys $self->{'functions'}) {
+ 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
+		...
+#		@SRarray = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
+#		splice @SRarray, 0, 1;
+#		foreach my $submodifier (keys @SRarray) {
+#			if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
+#				$SRarray[$submodifier] = $SRarray[$submodifier] + OptCoord[s_func];
+#			}
+#		}
+	}
+ }
+
+### Step 3: Make final Format changes, and Append Entire Functions Object to Master
+
  $master->{'conversionlist'} = $conversionlist;
- my $apcount = scalar keys $master->{'apertures'};
 
  
- $self->{'parameters'}->{'FS'}->{'format'}->{'integer'} = $master_int;
- $self->{'parameters'}->{'FS'}->{'format'}->{'decimal'} = $master_dec;
+ $self->{'parameters'}{'FS'}{'format'}{'integer'} = $master_int;
+ $self->{'parameters'}{'FS'}{'format'}{'decimal'} = $master_dec;
+ $self->{'parameters'}{'mode'} = $master_mode;
  print $count . "\n";
  
-
 }
 
 
