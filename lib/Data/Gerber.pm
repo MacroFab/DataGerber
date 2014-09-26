@@ -456,7 +456,7 @@ B<DO NOT USE INCREMENTAL COORDINATES>
  
  	'format' => {
  		'integer' => 5,
- 		'decimal' => 7
+ 		'decimal' => 6
  	}
  	
  Note that 7 is the maximum format value.
@@ -1098,12 +1098,12 @@ sub convert {
  my $apt; my $D;						#Used for listing Aperture codes D10 - D999; spec supports greater
  my $masterapt; my $master_equivalence_check;
  my $master_mode= $master->{'parameters'}{'mode'};
- my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 7
- my $master_dec = $master->{'parameters'}{'FS'}{'format'}{'decimal'};  #Should be set to 7
+ my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 6
+ my $master_dec = $master->{'parameters'}{'FS'}{'format'}{'decimal'};  #Should be set to 6
  my $s_func;
  my $mod; my $intjoiner; my $decjoiner; my $newzero;
  my $coord; my $xcoord; my $ycoord; my $icoord; my $jcoord;
- my $maxLen = '7';
+ my $maxLen = '6';
  my $conversionlist;
  my $SR; my @SRarray;
  
@@ -1283,31 +1283,55 @@ sub convert {
 sub translate {
 
  my $self = shift;
- my @TransCoord = shift;
+ my @TransCoord;
+
+ $TransCoord[0] = shift;
+ $TransCoord[1] = shift;
+
+ my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
+
+
+ $TransCoord[0] = sprintf("%f", $TransCoord[0]);
+
+ $TransCoord[0] *= $fDiv;
+
+ $TransCoord[1] = sprintf("%f", $TransCoord[1]);
+ $TransCoord[1] *= $fDiv;
 
  my @XYCoord;
+ my %XYCoord;
 
  my $s_func;
+ my $submodifier;
 
 ### Step 2D: Add Offsets to Coordinates,
 	### Make this its own Sub-routine called right at this moment
 	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
  foreach $s_func (keys $self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-
+		
 		@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
 		splice @XYCoord, 0, 1;
-		foreach my $submodifier (keys @XYCoord) {
-			if ($XYCoord[$submodifier]) {		#Deal with if previous iteration is X
-				print Dumper($XYCoord[$submodifier]) . "\n";
+		%XYCoord = @XYCoord;						#Array to Hash
+
+		foreach $submodifier (keys %XYCoord) {
+			if ($submodifier eq 'X') {
+				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[0];
 			}
-			if ('Y' <= $XYCoord[$submodifier]) {		#Deal with if previous iteration is Y
-				print Dumper($XYCoord[$submodifier]) . "\n";
-			}
-			
+			else {
+				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[1];
+			}		
 		}
+		@XYCoord = %XYCoord;						#Hash to Array
+			
+		if (($XYCoord[0] eq 'Y') && scalar(@XYCoord)>2 ) {
+			($XYCoord[0], $XYCoord[1],$XYCoord[2], $XYCoord[3]) = ($XYCoord[2], $XYCoord[3],$XYCoord[0], $XYCoord[1]);
+		}
+		
+		$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
 	}
  }
+
 
 }
 

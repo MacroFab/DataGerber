@@ -151,6 +151,7 @@ sub MFwrite {
  		print MASTER_FILE $f_func . $f_coord . $f_op . "*\n";
 	}
  }
+ print MASTER_FILE "M02*\n";
  close (MASTER_FILE);
 }
 
