@@ -1283,7 +1283,9 @@ sub convert {
 sub translate {
 
  my $self = shift;
- my $TransCoord = shift;
+ my @TransCoord = shift;
+
+ my @XYCoord;
 
  my $s_func;
 
@@ -1292,14 +1294,18 @@ sub translate {
 	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
  foreach $s_func (keys $self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-#		...
-#		@SRarray = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
-#		splice @SRarray, 0, 1;
-#		foreach my $submodifier (keys @SRarray) {
-#			if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
-#				$SRarray[$submodifier] = $SRarray[$submodifier] + TransCoord[s_func];
-#			}
-#		}
+
+		@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
+		splice @XYCoord, 0, 1;
+		foreach my $submodifier (keys @XYCoord) {
+			if ($XYCoord[$submodifier]) {		#Deal with if previous iteration is X
+				print Dumper($XYCoord[$submodifier]) . "\n";
+			}
+			if ('Y' <= $XYCoord[$submodifier]) {		#Deal with if previous iteration is Y
+				print Dumper($XYCoord[$submodifier]) . "\n";
+			}
+			
+		}
 	}
  }
 
