@@ -1329,9 +1329,94 @@ sub translate {
 		}
 		
 		$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
+		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
+			$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+		}
 	}
  }
 
+}
+
+
+sub rotate {
+
+ my $self = shift;
+
+
+ my $RotationBit = shift;
+
+
+ my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
+
+
+ my @XYCoord;
+ my %XYCoord;
+
+ my $s_func;
+ my $submodifier;
+ my $modifier;
+ my $apt;
+ my @modarray;
+
+
+ if ($RotationBit == '1') {
+	#Rotate functions with coordinates
+ 	foreach $s_func (keys $self->{'functions'}) {
+ 		if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
+		
+			@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
+			splice @XYCoord, 0, 1;
+
+			
+			if (scalar(@XYCoord)>2 ) {
+				($XYCoord[1], $XYCoord[3]) = ($XYCoord[3],$XYCoord[1]);
+			}
+			elsif (($XYCoord[0] eq 'X') && scalar(@XYCoord)<=2 ) {
+				$XYCoord[0]= 'Y';
+			}
+			elsif (($XYCoord[0] eq 'Y') && scalar(@XYCoord)<=2 ) {
+				$XYCoord[0]= 'X';
+			}
+
+
+			$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
+			if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
+				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+			}
+		}
+	}
+
+	#Rotate Apertures with more than one modifier		#TODO: Handle Polygons
+ 	foreach $apt (keys $self->{'apertures'}){
+
+ 		if (($self->{'apertures'}{$apt}{'type'} eq "O") || ($self->{'apertures'}{$apt}{'type'} eq "R")) {
+
+			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+			@modarray = split(/X/,$modifier);
+
+			($modarray[0],$modarray[1]) = ($modarray[1],$modarray[0]);
+
+			if (scalar(@modarray) == 4) {	#Specifies rotation of hole
+				($modarray[2],$modarray[3]) = ($modarray[3],$modarray[2]);
+			}
+
+			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+		}
+ 		if ($self->{'apertures'}{$apt}{'type'} eq "P") {	#Only matters for corner-case of regular polygon w/ rectangular hole
+
+			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+			@modarray = split(/X/,$modifier);
+
+			if (scalar(@modarray) == 5) {	#Specifies rotation of hole
+				($modarray[3],$modarray[4]) = ($modarray[4],$modarray[3]);
+			}
+
+			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+		}
+	}
+ }
 
 }
 
