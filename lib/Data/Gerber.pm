@@ -1095,7 +1095,7 @@ sub convert {
 ########## Parse each Gerber Function: If header conversion applies, apply it.
 
 ### Variable Initialization
- my $apt; my $D;						#Used for listing Aperture codes D10 - D999; spec supports greater
+ my $apt; my $Dcount;						#Used for listing Aperture codes D10 - D999; spec supports greater
  my $masterapt; my $master_equivalence_check;
  my $master_mode= $master->{'parameters'}{'mode'};
  my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 6
@@ -1118,76 +1118,69 @@ sub convert {
 
 #For every aperture,
  foreach $apt (keys $self->{'apertures'}){
-        ########################################## In Conversion List
-	if (exists($conversionlist->{$apt}) && defined($conversionlist->{$apt} )) {
-							##### If aperture is in conversion list, then:
-							########### Force the current aperture Code to be equal to the master
-		$self->{'apertures'}{$apt} = $master->{'apertures'}{$conversionlist->{$apt}};
-	}
-        ########################################## Not in Conversion List
- 	else {						##### If it is NOT in the conversion list, then:						
-		if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
+	if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
 							####### If the aperture code exists in the master file:
-			if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
+		if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
 							######### and If the aperture type is the same:
-				$mod = $self->_aperturemodconvert($apt,$master);
-							########### Define the $mod: Circle, Modifier, or doesn't need $mod
-				$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
-				foreach $masterapt (keys $master->{'apertures'}) {
-					if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
-						if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
-							########### If it's in the master file, is a $mod, and the $mod is EQUAL 
-							########### to ANY master aperture already defined:
-							$master_equivalence_check = '1';
-							last;############# Exit for loop
-						}
-					}
-				}
-				if ($master_equivalence_check == 0) {
-##### TODO REPLACE WITH FOREACH
-					for ($D = 10; $D<1000; $D = $D+1) {	
-						if (! exists($master->{'apertures'}{"D".$D}) && ! exists($self->{'apertures'}{"D".$D})) {
-							########### If it's in the master file, is a $mod, and the $mod is 
-							########### NOT EQUAL to ANY master aperture already defined:
-							$master->{'apertures'}{'D'.$D} = $self->{'apertures'}{$apt};
-							$conversionlist->{$apt} = 'D'.$D;
-							last;
-							############ Find new D-Code, convert, and add to conversion list		
-						}
-					}
-				}
-			}
-			else {				######### If the aperture type is NOT the same:
-##### TODO REPLACE WITH FOREACH
-				for ($D = 10; $D<1000; $D = $D+1) {	
-					if (! exists($master->{'apertures'}{"D".$D}) && ! exists($self->{'apertures'}{"D".$D})) {
-						$master->{'apertures'}{'D'.$D} = $self->{'apertures'}{$apt};
-						$conversionlist->{$apt} = "D".$D;
-						last;
-							############ Find new D-Code, convert TODO, and add to conversion list		
-					}
-				}
-			}
-		}
-		else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
 			$mod = $self->_aperturemodconvert($apt,$master);
+							########### Define the $mod: Circle, Modifier, or doesn't need $mod
+			$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
 			foreach $masterapt (keys $master->{'apertures'}) {
 				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
 					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
-							######### If it's NOT in the master file, is a $type, and the $type's $mod is 
-							######### EQUAL to ANY master aperture already defined:
+						########### If it's in the master file, is a $mod, and the $mod is EQUAL 
+						########### to ANY master aperture already defined:
 						$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
 						$conversionlist->{$apt} = $masterapt;
-							###########Force the current aperture to be equal to the master, and add to conversionlist
+						$master_equivalence_check = '1';
+						last;############# Exit for loop
 					}
 				}
-			}				
-			if (! exists($conversionlist->{$apt})) {
-							######### If none of the aperture values in the master equal the current apertures, add to master
-				$master->{'apertures'}{$apt} = $self->{'apertures'}{$apt};
-			}			
+			}
+			if ($master_equivalence_check == 0) {
+				foreach $Dcount (10..1000) {
+					if ((! exists($master->{'apertures'}{"D".$Dcount})) && (! exists($self->{'apertures'}{"D".$Dcount}))) {
+						########### If it's in the master file, is a $mod, and the $mod is 
+						########### NOT EQUAL to ANY master aperture already defined:
+						$master->{'apertures'}{'D'.$Dcount} = $self->{'apertures'}{$apt};
+						$conversionlist->{$apt} = 'D'.$Dcount;
+						last;
+						############ Find new D-Code, convert, and add to conversion list		
+					}
+				}
+			}
+		}
+		else {				######### If the aperture type is NOT the same:
+
+			foreach $Dcount (10..1000) {
+				if (! exists($master->{'apertures'}{"D".$Dcount}) && ! exists($self->{'apertures'}{"D".$Dcount})) {
+					$master->{'apertures'}{'D'.$Dcount} = $self->{'apertures'}{$apt};
+					$conversionlist->{$apt} = "D".$Dcount;
+					last;
+						############ Find new D-Code, convert TODO, and add to conversion list		
+				}
+			}
 		}
 	}
+	else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
+		$mod = $self->_aperturemodconvert($apt,$master);
+		foreach $masterapt (keys $master->{'apertures'}) {
+			if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
+				if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
+						######### If it's NOT in the master file, is a $type, and the $type's $mod is 
+						######### EQUAL to ANY master aperture already defined:
+					$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
+					$conversionlist->{$apt} = $masterapt;
+						###########Force the current aperture to be equal to the master, and add to conversionlist
+				}
+			}
+		}				
+		if (! exists($conversionlist->{$apt})) {
+					######### If none of the aperture values in the master equal the current apertures, add to master
+			$master->{'apertures'}{$apt} = $self->{'apertures'}{$apt};
+		}			
+	}
+
  } 
 # For every Function
  foreach $s_func (keys $self->{'functions'}) {
@@ -1360,6 +1353,7 @@ sub rotate {
 
 
  if ($RotationBit == '1') {
+
 	#Rotate functions with coordinates
  	foreach $s_func (keys $self->{'functions'}) {
  		if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
@@ -1389,7 +1383,7 @@ sub rotate {
 	#Rotate Apertures with more than one modifier		#TODO: Handle Polygons
  	foreach $apt (keys $self->{'apertures'}){
 
- 		if (($self->{'apertures'}{$apt}{'type'} eq "O") || ($self->{'apertures'}{$apt}{'type'} eq "R")) {
+ 		if ($self->{'apertures'}{$apt}{'type'} eq "O") {
 
 			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
 			@modarray = split(/X/,$modifier);
@@ -1403,6 +1397,24 @@ sub rotate {
 			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
 
 		}
+ 		if ($self->{'apertures'}{$apt}{'type'} eq "R") {
+
+			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+
+			@modarray = split(/X/,$modifier);
+
+			($modarray[0],$modarray[1]) = ($modarray[1],$modarray[0]);
+
+			if (scalar(@modarray) == 4) {	#Specifies rotation of hole
+				($modarray[2],$modarray[3]) = ($modarray[3],$modarray[2]);
+			}
+
+			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+
+		}
+
+
  		if ($self->{'apertures'}{$apt}{'type'} eq "P") {	#Only matters for corner-case of regular polygon w/ rectangular hole
 
 			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
