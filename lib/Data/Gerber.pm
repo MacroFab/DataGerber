@@ -73,9 +73,14 @@ my %gCodes = (
 	'G36'  => 1,
 	'G37'  => 1,
 	'G54'  => 1,
+	'G55'  => 1,
 	'G70'  => 1,
 	'G74'  => 1,
 	'G75'  => 1,
+	'G90'  => 1,
+	'G91'  => 1,
+	'M00'  => 1,
+	'M01'  => 1,
 	'M02'  => 1
 );
 	
@@ -373,6 +378,50 @@ sub mode {
  }
  
  return $self->{'parameters'}{'mode'};
+}
+
+=item mode( MODE )
+
+ Set or get the mode (units) for commands.  The default mode is inches (IN).
+ 
+ If MODE is not specified, returns the current mode for the document without
+ making any changes.  
+ 
+ MODE can be one of:
+ 
+  IN (inches) or MM (millimeters)
+  
+ Returns true (1) if successful, or undef and sets the error if an error
+ occurs.
+ 
+ 		# set mode
+ 	if( ! $gerb->mode('MM') ) {
+ 		die $gerb->error();
+ 	}
+ 	
+ 		# get mode
+ 	my $mode = $gerb->mode();
+ 	
+ 	
+=cut
+
+sub macro {
+
+ my $self = shift;
+ my $macro = shift;
+
+ my @macrolist = split('\*',$macro);
+
+ my $macroname = $macrolist[0];
+# print $macroname."\n";
+ my $macromod = $macrolist[1];
+# print $macromod."\n";
+ if( defined($macro) ) {
+
+	 $self->{'macros'}{$macroname} = $macromod;
+ }
+ 
+ return $self->{'macros'}{$macroname};
 }
 
 
@@ -1191,7 +1240,12 @@ sub convert {
 			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
 				$intjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'integer'};
 				$newzero = "0"x$intjoiner;
-				$coord =~ s/(X|Y|I|J)/$1$newzero/g;
+				my $pre = '';
+				if ($coord=~/(\-)/){
+					$pre = $1;
+					$coord =~ tr/-//d;
+				}
+				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
 				$self->{'functions'}[$s_func]{'coord'} = $coord;
 #				print "Integer Format Converted" . "\n";
 			}
@@ -1303,7 +1357,7 @@ sub translate {
  foreach $s_func (keys $self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		
-		@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
+		@XYCoord = split(/(X|Y|I|J)/,$self->{'functions'}[$s_func]{'coord'});
 		splice @XYCoord, 0, 1;
 		%XYCoord = @XYCoord;						#Array to Hash
 
@@ -1311,7 +1365,7 @@ sub translate {
 			if ($submodifier eq 'X') {
 				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[0];
 			}
-			else {
+			elsif ($submodifier eq 'Y') {
 				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[1];
 			}		
 		}

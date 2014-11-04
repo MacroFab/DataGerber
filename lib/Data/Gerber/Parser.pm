@@ -185,7 +185,7 @@ sub parse {
  	 }
  	 
  	 while(<$rfh>) {
- #	 	 print STDERR "DBG: $_";
+# 	 	 print STDERR "DBG: $_";
  	 	 return undef if( ! $self->_parseLine($_) );
  	 }
  	 
@@ -242,7 +242,7 @@ sub _parseLine {
  	# can have multiple commands on one line
  
  my @commands = split(/\*/, $line);
- 
+ my $comold;
  foreach my $com (@commands) {
 	 # from this point on, eliminate command-ending asterisks
 		
@@ -252,8 +252,15 @@ sub _parseLine {
 		 return $self->_parseCommand($com);
 	 }
 	 elsif( $com =~ /^D0/ || $com =~ /^D\d$/ ) {
-		 $self->error("[parse] Cannot Have OpCode Alone on Line: $com");
-		 return undef;
+		$self->error("[parse] Cannot Have OpCode Alone on Line: $com");
+		if ($self->{'ignore'}) {
+			return $self->_parseMove($com,$comold);
+	 		$comold = $com;
+		}
+		else { 
+			return $self->_parseMove($com,$comold);
+	 		$comold = $com;
+		}
 	 }
 	 elsif( $com =~ /^D[1-9]\d+$/ ) {
 		 return $self->_parseAperture($com);
@@ -262,8 +269,10 @@ sub _parseLine {
 		 return 1;
 	 }
 	 else {
-		 return $self->_parseMove($com);
+		 return $self->_parseMove($com,$comold);
+	 	 $comold = $com;
 	 }
+
  }
  
 }
@@ -327,12 +336,22 @@ sub _parseMove {
 	
  my $self = shift;
  my $line = shift;
+ my $lineold = shift;
 
  my ($coord, $opcode); 
  
  if( $line =~ /^(.+)(D\d+)/ ) {
 	 $coord = $1;
 	 $opcode = $2;
+ }
+# elsif( $line =~ /^(D0*[1-3]{1})/ ) {
+#	if ($lineold =~ /^(.+)(D\d+)/) {
+#		$coord = $1;
+#	}
+#	$opcode = $1;
+# }
+ elsif( $line =~ /^(D0*[1-9]{1})/ ) {
+	 $opcode = $1;
  }
  else {
 		# otherwise, we don't know what you mean!

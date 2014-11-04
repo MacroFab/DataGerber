@@ -127,6 +127,11 @@ sub MFwrite {
 
  print MASTER_FILE "\%MO" . $gerb->{'parameters'}{'mode'} . "*\%\n"; 			# Print Header Parameters: FS, MO etc.)
  print MASTER_FILE "\%FS".$FSzero.$FScoord."X".$FSformat->{'integer'}. $FSformat->{'decimal'}."Y".$FSformat->{'integer'}.$FSformat->{'decimal'}. "*\%\n";
+ foreach my $macrokeys (keys $gerb->{'macros'}) {
+	 print MASTER_FILE "\%AM" . $macrokeys ."*". $gerb->{'macros'}{$macrokeys} . "*\%\n"; 			# Print Header Parameters: FS, MO etc.)	
+#	 print "\%AM". $macrokeys ."*". $gerb->{'macros'}{$macrokeys} . "*\%\n";	
+ }
+# print MASTER_FILE "\%AM".$FSzero.$FScoord."X".$FSformat->{'integer'}. $FSformat->{'decimal'}."Y".$FSformat->{'integer'}.$FSformat->{'decimal'}. "*\%\n";
 											#####################
  my $master_ap; my $apcount;
 
