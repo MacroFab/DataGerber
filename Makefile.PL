@@ -9,3 +9,4 @@ WriteMakefile(
       (ABSTRACT_FROM  => 'lib/Data/Gerber.pm', # retrieve abstract from module
        AUTHOR         => 'Chris Church <church@local>') : ()),
 );
+

@@ -6,3 +6,4 @@ t/Data-Gerber.t
 t/Data-Gerber-Parser.t
 lib/Data/Gerber.pm
 lib/Data/Gerber/Parser.pm
+lib/Data/Gerber/Writer.pm
