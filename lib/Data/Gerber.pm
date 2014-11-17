@@ -660,8 +660,10 @@ sub function {
  
  if( exists($opts{'op'}) && defined($opts{'op'}) ) {
  	 if( $opts{'op'} !~ /D0?[123]$/ ) {
- 	 	 $self->error("[function] Invalid Operation Code: $opts{'op'}");
- 	 	 return undef;
+		 if ($opts{'func'} !~/G54/){
+ 	 	 	$self->error("[function] Invalid Operation Code: $opts{'op'}");
+ 	 	 	return undef;
+		}
  	 }
  }
  
@@ -1087,7 +1089,7 @@ sub _FSdecconvert{
  my $newzero;
  my $decjoiner;
 
- $decjoiner = '14' - (length($Var));
+ $decjoiner = '12' - (length($Var));
  $newzero = "0"x$decjoiner;
  $coord = $Char . $Var . $newzero;
  return $coord;

@@ -153,7 +153,9 @@ sub MFwrite {
 		if (exists($master_func->{'func'})  && defined($master_func->{'func'})) {$f_func  = $master_func->{'func'}};
 		if (exists($master_func->{'coord'}) && defined($master_func->{'coord'})){$f_coord = $master_func->{'coord'}};
 		if (exists($master_func->{'op'})    && defined($master_func->{'op'}))   {$f_op    = $master_func->{'op'}};
- 		print MASTER_FILE $f_func . $f_coord . $f_op . "*\n";
+		if ($f_func !~ /G54/) {
+ 			print MASTER_FILE $f_func . $f_coord . $f_op . "*\n";
+		}
 	}
  }
  print MASTER_FILE "M02*\n";

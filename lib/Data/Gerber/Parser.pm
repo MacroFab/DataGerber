@@ -311,9 +311,11 @@ sub _parseCommand {
  	 	 $coord = $1;
  	 	 $opcode = $2;
  	 }
- 	 elsif( defined($com) && $com eq 'G54' && $line =~ /^(D\d+)/) {
+ 	 elsif( defined($com) && $com eq 'G54' && $line =~ /^(D[1-9]\d+)/) {
  	 	 # tool select command
- 	 	 $opcode = $2;
+		 $self->_parseAperture($line);
+#		 $com = undef;
+ #	 	 $opcode = $1;
  	 }
  	 else {
  	 	 	# otherwise, we don't know what you mean!
