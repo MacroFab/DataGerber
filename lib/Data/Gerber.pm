@@ -1084,12 +1084,14 @@ sub _FSdecconvert{
  my $self = shift;
  my $Var = shift;
  my $Char = shift;
+ my $subintlength = shift;			#The original int length
+ my $subdeclength = shift;			#The original decimal length
  my $coord;
 
  my $newzero;
  my $decjoiner;
 
- $decjoiner = '12' - (length($Var));
+ $decjoiner = '12'- (length($Var));
  $newzero = "0"x$decjoiner;
  $coord = $Char . $Var . $newzero;
  return $coord;
@@ -1238,6 +1240,28 @@ sub convert {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 							### Step 2A: Add back dropped zeroes, if needed
 		my $coord = $self->{'functions'}[$s_func]{'coord'} ;
+		my $formatlength = $self->{'parameters'}{'FS'}{'format'}{'integer'}+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
+		my @coordsplit = split(/[X|Y|I|J]/,$coord);
+		foreach my $value (@coordsplit) {
+			$value =~ tr/[\+\-]//d;
+		}
+		my $coordvalues = join(@coordsplit);
+		if (length($coordvalues)<$formatlength) {
+			if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
+				$intjoiner = $formatlength - length($coord);
+				$newzero = "0"x$intjoiner;
+				my $pre = '';
+				if ($coord=~/(\-)/){
+					$pre = $1;
+					$coord =~ tr/-//d;
+				}
+				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
+			#	$self->{'functions'}[$s_func]{'coord'} = $coord;
+			}
+			else {
+				$coord = $coord;		
+			} 
+		}
 		if ($self->{'parameters'}{'FS'}{'format'}{'integer'} ne $maxLen) {
 			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
 				$intjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'integer'};
@@ -1260,13 +1284,18 @@ sub convert {
 				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
 					$decjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'decimal'};
 					$newzero = "0"x$decjoiner;
-					$coord =~ s/(X|Y|I|J)([0-9]+)/$1$2$newzero/g;
+					my $pre = '';
+					if ($coord=~/(\-)/){
+						$pre = $1;
+						$coord =~ tr/-//d;
+					}
+				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
 				}
 				else {
-					if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X")};
-					if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y")};
-					if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I")};
-					if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J")};
+					if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+					if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+					if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+					if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
 					$coord = $xcoord . $ycoord . $icoord . $jcoord;
 				}
 				$self->{'functions'}[$s_func]{'coord'} = $coord;
