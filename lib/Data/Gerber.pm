@@ -1256,7 +1256,7 @@ sub convert {
 					$coord =~ tr/-//d;
 				}
 				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
-			#	$self->{'functions'}[$s_func]{'coord'} = $coord;
+				$self->{'functions'}[$s_func]{'coord'} = $coord;
 			}
 			else {
 				$coord = $coord;		
@@ -1284,12 +1284,7 @@ sub convert {
 				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
 					$decjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'decimal'};
 					$newzero = "0"x$decjoiner;
-					my $pre = '';
-					if ($coord=~/(\-)/){
-						$pre = $1;
-						$coord =~ tr/-//d;
-					}
-				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
+					$coord =~ s/(X|Y|I|J)(-*)([0-9]+)/$1$2$3$newzero/g;
 				}
 				else {
 					if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
@@ -1401,6 +1396,7 @@ sub translate {
 			}		
 		}
 		@XYCoord = %XYCoord;						#Hash to Array
+
 			
 		if (($XYCoord[0] eq 'Y') && scalar(@XYCoord)>2 ) {
 			($XYCoord[0], $XYCoord[1],$XYCoord[2], $XYCoord[3]) = ($XYCoord[2], $XYCoord[3],$XYCoord[0], $XYCoord[1]);
