@@ -1122,6 +1122,30 @@ sub _moCoordconvert{
 }
 
 
+sub _leadingzeroExtend {
+ my $coordvalue = shift;
+ my $joiner = shift;
+ my $isdec = shift;
+
+ my $newzero = "0"x$joiner;
+ my $pre = '';
+ if ($coordvalue=~/(\-)/){
+ 	$pre = $1;
+	$coordvalue =~ tr/-//d;
+ }
+ if ($isdec == '1') {
+	$coordvalue = $pre.$coordvalue.$newzero;
+ }
+ elsif ($isdec == '0') {
+	$coordvalue = $pre.$newzero.$coordvalue
+ }
+# print $coordvalue."\n";
+ return $coordvalue;
+
+
+}
+
+
 
 =item convert( MASTER)
 
@@ -1134,7 +1158,6 @@ sub _moCoordconvert{
 =item Moves
 =item Repeatable Parameter Calls
 =back
-
  Warning: No Support for Aperture Macros!
 
  MASTER consists of a Gerber object with 'master parameters' pre-specified
@@ -1238,65 +1261,86 @@ sub convert {
 # For every Function
  foreach $s_func (keys $self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-							### Step 2A: Add back dropped zeroes, if needed
+							### Step 2A: Add back dropped zeroes from original Gerb, if needed
 		my $coord = $self->{'functions'}[$s_func]{'coord'} ;
 		my $formatlength = $self->{'parameters'}{'FS'}{'format'}{'integer'}+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
-		my @coordsplit = split(/[X|Y|I|J]/,$coord);
-		foreach my $value (@coordsplit) {
-			$value =~ tr/[\+\-]//d;
-		}
-		my $coordvalues = join(@coordsplit);
-		if (length($coordvalues)<$formatlength) {
-			if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-				$intjoiner = $formatlength - length($coord);
-				$newzero = "0"x$intjoiner;
-				my $pre = '';
-				if ($coord=~/(\-)/){
-					$pre = $1;
-					$coord =~ tr/-//d;
-				}
-				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
-				$self->{'functions'}[$s_func]{'coord'} = $coord;
+		my $testvalue;
+ 		my $joiner; 
+		my @coordsplit = split(/([X|Y|I|J])/,$coord);
+		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
+		my $currentChar;
+		foreach my $coordvalue (@coordsplit) {
+			$testvalue = $coordvalue;
+			$testvalue =~ tr/[+\-]//d;
+			if ($coordvalue =~ m/([XYIJ])/i) {
+				$currentChar = $1;
 			}
-			else {
-				$coord = $coord;		
-			} 
+			elsif ((length($testvalue)<$formatlength) && ! ($coordvalue =~ /X|Y|I|J/i)) {
+ 				$joiner = $formatlength - length($testvalue);
+				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
+					$coordvalue = _leadingzeroExtend($coordvalue,$joiner,'0');
+				}
+			}
 		}
+		my $tempcoord = join('',@coordsplit);
+		@coordsplit = split(/([X|Y|I|J])/,$tempcoord);
+		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
+							### Step 2B: Add back Leading Zeros
 		if ($self->{'parameters'}{'FS'}{'format'}{'integer'} ne $maxLen) {
 			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
-				$intjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'integer'};
-				$newzero = "0"x$intjoiner;
-				my $pre = '';
-				if ($coord=~/(\-)/){
-					$pre = $1;
-					$coord =~ tr/-//d;
+#TODO
+				$intjoiner = $maxLen+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
+
+				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
+					foreach my $intvalue (@coordsplit) {
+						$testvalue = $intvalue;
+						$testvalue =~ tr/[+\-]//d;
+						if ($intvalue =~ m/([XYIJ])/i) {
+							$currentChar = $1;
+						}
+						elsif ((length($testvalue)<$intjoiner) && ! ($intvalue =~ /X|Y|I|J/i)) {
+ 							$joiner = $intjoiner- length($testvalue);
+							$intvalue = _leadingzeroExtend($intvalue,$joiner,'0');
+						}
+					}
+
 				}
-				$coord =~ s/(X|Y|I|J)/$1$pre$newzero/g;
-				$self->{'functions'}[$s_func]{'coord'} = $coord;
 #				print "Integer Format Converted" . "\n";
 			}
 		}
+		$tempcoord = join('',@coordsplit);
+		@coordsplit = split(/([X|Y|I|J])/,$tempcoord);
+		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
+							### Step 2C: Add back Trailing Zeros
 		if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} ne $maxLen) {
 			if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} < $maxLen) {
-
 				$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
-
+				$decjoiner = 2*$maxLen;
 				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					$decjoiner = $maxLen - $self->{'parameters'}{'FS'}{'format'}{'decimal'};
-					$newzero = "0"x$decjoiner;
-					$coord =~ s/(X|Y|I|J)(-*)([0-9]+)/$1$2$3$newzero/g;
+					foreach my $decvalue (@coordsplit) {
+						$testvalue = $decvalue;
+						$testvalue =~ tr/[+\-]//d;
+						if ($decvalue =~ m/([XYIJ])/i) {
+							$currentChar = $1;
+						}
+						elsif ((length($testvalue)<$decjoiner) && !($decvalue =~ /X|Y|I|J/i)) {
+ 							$joiner = $decjoiner- length($testvalue);
+							$decvalue = _leadingzeroExtend($decvalue,$joiner,'1');
+						}
+					}
 				}
 				else {
-					if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-					if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-					if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-					if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+	#				if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+	#				if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+	#				if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
+	#				if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
 					$coord = $xcoord . $ycoord . $icoord . $jcoord;
 				}
-				$self->{'functions'}[$s_func]{'coord'} = $coord;
 #				print "Decimal Format Converted" . "\n";
 			}
 		}
+		$coord = join('',@coordsplit);
+		$self->{'functions'}[$s_func]{'coord'} = $coord ;
 	}
  }
  foreach $s_func (keys $self->{'functions'}) {		### Step 2B: Convert MM to IN (if needed)
