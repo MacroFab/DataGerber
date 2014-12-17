@@ -35,12 +35,23 @@ ok( $gerb->function( 'func' => 'G01', 'coord' => 'X500000Y500000', 'op' => 'D02'
 is( $gerb->functions( 'count' => 1 ), 1, 'Func Count 0');
 ok( checkFunc0(), 'Check Func 0');
 
-is( $gerb->convert(),1,'gerb input?');
-
 ok( $gerb->function( 'func' => 'G01', 'coord' => 'X300000Y600000', 'op' => 'D01'), 'Add Func 2');
 is( $gerb->width(), 2, 'Width');
-is( $gerb->height(), 2, 'Height');
+is( $gerb->height(), 1, 'Height');
 
+my $master_gerb = Data::Gerber->new();
+$master_gerb -> format('zero' => 'L', 
+	  	       'coordinates' => 'A',
+		       'format' => {'integer' => 6,
+				    'decimal' => 6 });
+
+ my $master_mode = 'IN';
+ $master_gerb->mode($master_mode);
+
+ my $master_AM = 'OC8*5,1,8,0,0,1.08239X$1,22.5';
+ $master_gerb->macro($master_AM);
+
+is( $gerb->convert($master_gerb),1,'gerb input?');
 
 
 sub checkFormat {

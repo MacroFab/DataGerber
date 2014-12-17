@@ -1393,6 +1393,8 @@ sub convert {
  $self->{'parameters'}{'FS'}{'format'}{'integer'} = $master_int;
  $self->{'parameters'}{'FS'}{'format'}{'decimal'} = $master_dec;
  $self->{'parameters'}{'mode'} = $master_mode;
+
+ return 1;
 }
 
 ###################################################
