@@ -1050,7 +1050,7 @@ sub _aperturemodconvert {		#Checks
  if ($self->{'apertures'}{$apt}{'type'} eq "C") {
 	$mod = 'diameter';
  	if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} *25.4;   #Unique to Circle
+		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} /25.4;   #Unique to Circle
 	}
  }
  if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
@@ -1061,7 +1061,7 @@ sub _aperturemodconvert {		#Checks
 	$modifier = $self->{'apertures'}{$apt}{'modifiers'};
 	@modarray = split(/X/,$modifier);
 	foreach my $submodifier (keys @modarray) {
-		$modarray[$submodifier] = $modarray[$submodifier] * 25.4;
+		$modarray[$submodifier] = $modarray[$submodifier] / 25.4;
 	}
 
 	$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
@@ -1109,7 +1109,7 @@ sub _moCoordconvert{
  my $Char = substr($Varstring,0,1);
  $Var = substr($Varstring,1);
 
- $Var = round($Var * (25.4));
+ $Var = round($Var / (25.4));
  my $Varlength = length($Var);
  if ($Varlength > 2*$maxLen){
 	$self->error("Coordinate too large to format using Gerber");
@@ -1380,7 +1380,7 @@ sub convert {
 				splice @SRarray, 0, 1;
 				foreach my $submodifier (keys @SRarray) {
 					if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
-						$SRarray[$submodifier] = $SRarray[$submodifier] * 25.4;
+						$SRarray[$submodifier] = $SRarray[$submodifier] / 25.4;
 					}
 				}
 				$self->{'functions'}[$s_func]{'param'} = join('',@SRarray);
@@ -1408,12 +1408,14 @@ sub translate {
  my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
 
 
- $TransCoord[0] = sprintf("%f", $TransCoord[0]);
+# $TransCoord[0] = sprintf("%f", $TransCoord[0]);
 
  $TransCoord[0] *= $fDiv;
 
- $TransCoord[1] = sprintf("%f", $TransCoord[1]);
+# $TransCoord[1] = sprintf("%f", $TransCoord[1]);
  $TransCoord[1] *= $fDiv;
+
+# print "Translate".Dumper(@TransCoord)."\n";
 
  my @XYCoord;
  my %XYCoord;
@@ -1448,10 +1450,30 @@ sub translate {
 		
 		$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
 		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
-			$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+			if (exists($self->{'functions'}[$s_func]{'op'}) && defined($self->{'functions'}[$s_func]{'op'})){
+				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+#			my $pos = {'X'=>$self->{'functions'}[$s_func]{'xy_coords'}[0], 
+#				   'Y'=>$self->{'functions'}[$s_func]{'xy_coords'}[1]};
+#			$self->_updateCoords($pos);
+			}
 		}
 	}
  }
+ my $xoffset = $TransCoord[0] / (10**3);
+ my $yoffset = $TransCoord[1] / (10**3);
+ if (defined($self->{'boundaries'}{'LX'})) {
+ 	$self->{'boundaries'}{'LX'} = $self->{'boundaries'}{'LX'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'BY'})) {
+        $self->{'boundaries'}{'BY'} = $self->{'boundaries'}{'BY'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'RX'})) {
+        $self->{'boundaries'}{'RX'} = $self->{'boundaries'}{'RX'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'TY'})) {
+        $self->{'boundaries'}{'TY'} = $self->{'boundaries'}{'TY'}+$xoffset;
+ }
+
 
 }
 
