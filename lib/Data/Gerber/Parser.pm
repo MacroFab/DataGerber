@@ -94,11 +94,11 @@ sub new {
  	
  $self->{'paramMap'} = {
  	 
- 	 'FS' => sub { $self->_paramFS( shift ) },
- 	 'MO' => sub { $self->_paramMO( shift ) },
- 	 'AD' => sub { $self->_paramAD( shift ) },
- 	 'LP' => sub { $self->_paramLP( shift ) },
- 	 'SR' => sub { $self->_paramSR( shift ) }
+ 	 'FS' => 1,#sub { $self->_paramFS( shift ) },
+ 	 'MO' => 1,#sub { $self->_paramMO( shift ) },
+ 	 'AD' => 1,#sub { $self->_paramAD( shift ) },
+ 	 'LP' => 1,#sub { $self->_paramLP( shift ) },
+ 	 'SR' => 1#sub { $self->_paramSR( shift ) }
  };
  
  return $self;	
@@ -398,7 +398,8 @@ sub _parseParam {
  my $pCode = substr($line, 0, 2, '');
 
  if( exists( $self->{'paramMap'}{$pCode} ) ) {
- 	 return $self->{'paramMap'}{$pCode}($line);
+	 my $paramRef = '_param'.$pCode;
+ 	 return $self->$paramRef($line);
  }
  
  return 1;

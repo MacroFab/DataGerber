@@ -923,6 +923,8 @@ sub _processCoords {
  my %pos = %{ $sizeRet->[0] };
  my %off = %{ $sizeRet->[1] };
 
+# print Dumper($sizeRet)."\n";
+
  	# default to last coordinate value for axis
  	# if not supplied (coordinates are modal)
  foreach('X', 'Y') {
