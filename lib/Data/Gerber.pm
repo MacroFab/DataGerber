@@ -1062,7 +1062,8 @@ sub _aperturemodconvert {		#Checks
 					## If Polygon, Dealt with uniquely above
 	$modifier = $self->{'apertures'}{$apt}{'modifiers'};
 	@modarray = split(/X/,$modifier);
-	foreach my $submodifier (keys @modarray) {
+
+	foreach my $submodifier (@modarray) {
 		$modarray[$submodifier] = $modarray[$submodifier] / 25.4;
 	}
 
@@ -1195,7 +1196,7 @@ sub convert {
 ### Step 1A: Edit Modifiers in the Apertures for each individual Gerber File
 
 #For every aperture,
- foreach $apt (keys $self->{'apertures'}){
+ foreach $apt (keys %{$self->{'apertures'}}){
 	if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
 							####### If the aperture code exists in the master file:
 		if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
@@ -1203,7 +1204,7 @@ sub convert {
 			$mod = $self->_aperturemodconvert($apt,$master);
 							########### Define the $mod: Circle, Modifier, or doesn't need $mod
 			$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
-			foreach $masterapt (keys $master->{'apertures'}) {
+			foreach $masterapt (keys %{$master->{'apertures'}}) {
 				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
 					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
 						########### If it's in the master file, is a $mod, and the $mod is EQUAL 
@@ -1242,7 +1243,7 @@ sub convert {
 	}
 	else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
 		$mod = $self->_aperturemodconvert($apt,$master);
-		foreach $masterapt (keys $master->{'apertures'}) {
+		foreach $masterapt (keys %{$master->{'apertures'}}) {
 			if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
 				if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
 						######### If it's NOT in the master file, is a $type, and the $type's $mod is 
@@ -1380,7 +1381,7 @@ sub convert {
 			if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
 				@SRarray = split(/(I|J)/,$self->{'functions'}[$s_func]{'param'});
 				splice @SRarray, 0, 1;
-				foreach my $submodifier (keys @SRarray) {
+				foreach my $submodifier (@SRarray) {
 					if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
 						$SRarray[$submodifier] = $SRarray[$submodifier] / 25.4;
 					}
@@ -1428,7 +1429,7 @@ sub translate {
 ### Step 2D: Add Offsets to Coordinates,
 	### Make this its own Sub-routine called right at this moment
 	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
- foreach $s_func (keys $self->{'functions'}) {
+ foreach $s_func ($self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		
 		@XYCoord = split(/(X|Y|I|J)/,$self->{'functions'}[$s_func]{'coord'});
@@ -1504,7 +1505,7 @@ sub rotate {
  if ($RotationBit == '1') {
 
 	#Rotate functions with coordinates
- 	foreach $s_func (keys $self->{'functions'}) {
+ 	foreach $s_func ($self->{'functions'}) {
  		if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		
 			@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
@@ -1530,7 +1531,7 @@ sub rotate {
 	}
 
 	#Rotate Apertures with more than one modifier		#TODO: Handle Polygons
- 	foreach $apt (keys $self->{'apertures'}){
+ 	foreach $apt (keys %{$self->{'apertures'}}){
 
  		if ($self->{'apertures'}{$apt}{'type'} eq "O") {
 
