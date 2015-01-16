@@ -90,16 +90,6 @@ sub new {
  if( exists($opts{'ignoreBlank'}) && defined($opts{'ignoreBlank'}) ) {
  	$self->{'ignoreBlank'} = $opts{'ignoreBlank'};
  } 
- 	# construct dynamic param handler map here...
- 	
- $self->{'paramMap'} = {
- 	 
- 	 'FS' => sub { $self->_paramFS( shift ) },
- 	 'MO' => sub { $self->_paramMO( shift ) },
- 	 'AD' => sub { $self->_paramAD( shift ) },
- 	 'LP' => sub { $self->_paramLP( shift ) },
- 	 'SR' => sub { $self->_paramSR( shift ) }
- };
  
  return $self;	
 }
@@ -272,7 +262,6 @@ sub _parseLine {
 		 return $self->_parseMove($com,$comold);
 	 	 $comold = $com;
 	 }
-
  }
  
 }
@@ -298,10 +287,8 @@ sub _parseCommand {
  	 	$self->error( $self->{'gerbObj'}->error() );
  		return undef;
  	 }
-
 	return 1;
  }
- 
  
  	# are there characters in the line after the command code?
  if( $line =~ /\w+/ ) {
@@ -311,11 +298,9 @@ sub _parseCommand {
  	 	 $coord = $1;
  	 	 $opcode = $2;
  	 }
- 	 elsif( defined($com) && $com eq 'G54' && $line =~ /^(D[1-9]\d+)/) {
+ 	 elsif( defined($com) && $com eq 'G54' && $line =~ /^D[1-9]\d+/) {
  	 	 # tool select command
 		 $self->_parseAperture($line);
-#		 $com = undef;
- #	 	 $opcode = $1;
  	 }
  	 else {
  	 	 	# otherwise, we don't know what you mean!
@@ -346,12 +331,6 @@ sub _parseMove {
 	 $coord = $1;
 	 $opcode = $2;
  }
-# elsif( $line =~ /^(D0*[1-3]{1})/ ) {
-#	if ($lineold =~ /^(.+)(D\d+)/) {
-#		$coord = $1;
-#	}
-#	$opcode = $1;
-# }
  elsif( $line =~ /^(D0*[1-9]{1})/ ) {
 	 $opcode = $1;
  }
@@ -397,9 +376,12 @@ sub _parseParam {
  
  my $pCode = substr($line, 0, 2, '');
 
- if( exists( $self->{'paramMap'}{$pCode} ) ) {
- 	 return $self->{'paramMap'}{$pCode}($line);
- }
+ if    ($pCode eq 'FS') {$self->_paramFS( $line )}
+ elsif ($pCode eq 'MO') {$self->_paramMO( $line )}
+ elsif ($pCode eq 'AD') {$self->_paramAD( $line )}
+ elsif ($pCode eq 'LP') {$self->_paramLP( $line )}
+ elsif ($pCode eq 'SR') {$self->_paramSR( $line )}
+ else { $self->error( $self->{'gerbObj'}->error() )};
  
  return 1;
  

@@ -923,6 +923,8 @@ sub _processCoords {
  my %pos = %{ $sizeRet->[0] };
  my %off = %{ $sizeRet->[1] };
 
+# print Dumper($sizeRet)."\n";
+
  	# default to last coordinate value for axis
  	# if not supplied (coordinates are modal)
  foreach('X', 'Y') {
@@ -1050,7 +1052,7 @@ sub _aperturemodconvert {		#Checks
  if ($self->{'apertures'}{$apt}{'type'} eq "C") {
 	$mod = 'diameter';
  	if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} *25.4;   #Unique to Circle
+		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} /25.4;   #Unique to Circle
 	}
  }
  if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
@@ -1060,8 +1062,8 @@ sub _aperturemodconvert {		#Checks
 					## If Polygon, Dealt with uniquely above
 	$modifier = $self->{'apertures'}{$apt}{'modifiers'};
 	@modarray = split(/X/,$modifier);
-	foreach my $submodifier (keys @modarray) {
-		$modarray[$submodifier] = $modarray[$submodifier] * 25.4;
+	foreach my $submodifier (@modarray) {
+		$modarray[$submodifier] = $modarray[$submodifier] / 25.4;
 	}
 
 	$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
@@ -1109,7 +1111,7 @@ sub _moCoordconvert{
  my $Char = substr($Varstring,0,1);
  $Var = substr($Varstring,1);
 
- $Var = round($Var * (25.4));
+ $Var = round($Var / (25.4));
  my $Varlength = length($Var);
  if ($Varlength > 2*$maxLen){
 	$self->error("Coordinate too large to format using Gerber");
@@ -1193,7 +1195,7 @@ sub convert {
 ### Step 1A: Edit Modifiers in the Apertures for each individual Gerber File
 
 #For every aperture,
- foreach $apt (keys $self->{'apertures'}){
+ foreach $apt (keys %{$self->{'apertures'}}){
 	if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
 							####### If the aperture code exists in the master file:
 		if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
@@ -1201,7 +1203,7 @@ sub convert {
 			$mod = $self->_aperturemodconvert($apt,$master);
 							########### Define the $mod: Circle, Modifier, or doesn't need $mod
 			$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
-			foreach $masterapt (keys $master->{'apertures'}) {
+			foreach $masterapt (keys %{$master->{'apertures'}}) {
 				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
 					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
 						########### If it's in the master file, is a $mod, and the $mod is EQUAL 
@@ -1240,7 +1242,7 @@ sub convert {
 	}
 	else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
 		$mod = $self->_aperturemodconvert($apt,$master);
-		foreach $masterapt (keys $master->{'apertures'}) {
+		foreach $masterapt (keys %{$master->{'apertures'}}) {
 			if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
 				if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
 						######### If it's NOT in the master file, is a $type, and the $type's $mod is 
@@ -1378,9 +1380,9 @@ sub convert {
 			if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
 				@SRarray = split(/(I|J)/,$self->{'functions'}[$s_func]{'param'});
 				splice @SRarray, 0, 1;
-				foreach my $submodifier (keys @SRarray) {
+				foreach my $submodifier (@SRarray) {
 					if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
-						$SRarray[$submodifier] = $SRarray[$submodifier] * 25.4;
+						$SRarray[$submodifier] = $SRarray[$submodifier] / 25.4;
 					}
 				}
 				$self->{'functions'}[$s_func]{'param'} = join('',@SRarray);
@@ -1408,12 +1410,14 @@ sub translate {
  my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
 
 
- $TransCoord[0] = sprintf("%f", $TransCoord[0]);
+# $TransCoord[0] = sprintf("%f", $TransCoord[0]);
 
  $TransCoord[0] *= $fDiv;
 
- $TransCoord[1] = sprintf("%f", $TransCoord[1]);
+# $TransCoord[1] = sprintf("%f", $TransCoord[1]);
  $TransCoord[1] *= $fDiv;
+
+# print "Translate".Dumper(@TransCoord)."\n";
 
  my @XYCoord;
  my %XYCoord;
@@ -1424,7 +1428,7 @@ sub translate {
 ### Step 2D: Add Offsets to Coordinates,
 	### Make this its own Sub-routine called right at this moment
 	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
- foreach $s_func (keys $self->{'functions'}) {
+ foreach $s_func ($self->{'functions'}) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		
 		@XYCoord = split(/(X|Y|I|J)/,$self->{'functions'}[$s_func]{'coord'});
@@ -1448,10 +1452,30 @@ sub translate {
 		
 		$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
 		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
-			$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+			if (exists($self->{'functions'}[$s_func]{'op'}) && defined($self->{'functions'}[$s_func]{'op'})){
+				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+#			my $pos = {'X'=>$self->{'functions'}[$s_func]{'xy_coords'}[0], 
+#				   'Y'=>$self->{'functions'}[$s_func]{'xy_coords'}[1]};
+#			$self->_updateCoords($pos);
+			}
 		}
 	}
  }
+ my $xoffset = $TransCoord[0] / (10**3);
+ my $yoffset = $TransCoord[1] / (10**3);
+ if (defined($self->{'boundaries'}{'LX'})) {
+ 	$self->{'boundaries'}{'LX'} = $self->{'boundaries'}{'LX'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'BY'})) {
+        $self->{'boundaries'}{'BY'} = $self->{'boundaries'}{'BY'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'RX'})) {
+        $self->{'boundaries'}{'RX'} = $self->{'boundaries'}{'RX'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'TY'})) {
+        $self->{'boundaries'}{'TY'} = $self->{'boundaries'}{'TY'}+$xoffset;
+ }
+
 
 }
 
@@ -1480,7 +1504,7 @@ sub rotate {
  if ($RotationBit == '1') {
 
 	#Rotate functions with coordinates
- 	foreach $s_func (keys $self->{'functions'}) {
+ 	foreach $s_func ($self->{'functions'}) {
  		if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		
 			@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
@@ -1506,7 +1530,7 @@ sub rotate {
 	}
 
 	#Rotate Apertures with more than one modifier		#TODO: Handle Polygons
- 	foreach $apt (keys $self->{'apertures'}){
+ 	foreach $apt (keys %{$self->{'apertures'}}){
 
  		if ($self->{'apertures'}{$apt}{'type'} eq "O") {
 
