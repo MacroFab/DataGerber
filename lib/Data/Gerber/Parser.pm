@@ -90,19 +90,6 @@ sub new {
  if( exists($opts{'ignoreBlank'}) && defined($opts{'ignoreBlank'}) ) {
  	$self->{'ignoreBlank'} = $opts{'ignoreBlank'};
  } 
-<<<<<<< HEAD
- 	# construct dynamic param handler map here...
- 	
- $self->{'paramMap'} = {
- 	 
- 	 'FS' => 1,#sub { $self->_paramFS( shift ) },
- 	 'MO' => 1,#sub { $self->_paramMO( shift ) },
- 	 'AD' => 1,#sub { $self->_paramAD( shift ) },
- 	 'LP' => 1,#sub { $self->_paramLP( shift ) },
- 	 'SR' => 1#sub { $self->_paramSR( shift ) }
- };
-=======
->>>>>>> masterlocal
  
  return $self;	
 }
@@ -389,19 +376,13 @@ sub _parseParam {
  
  my $pCode = substr($line, 0, 2, '');
 
-<<<<<<< HEAD
- if( exists( $self->{'paramMap'}{$pCode} ) ) {
-	 my $paramRef = '_param'.$pCode;
- 	 return $self->$paramRef($line);
- }
-=======
+
  if    ($pCode eq 'FS') {$self->_paramFS( $line )}
  elsif ($pCode eq 'MO') {$self->_paramMO( $line )}
  elsif ($pCode eq 'AD') {$self->_paramAD( $line )}
  elsif ($pCode eq 'LP') {$self->_paramLP( $line )}
  elsif ($pCode eq 'SR') {$self->_paramSR( $line )}
  else { $self->error( $self->{'gerbObj'}->error() )};
->>>>>>> masterlocal
  
  return 1;
  
