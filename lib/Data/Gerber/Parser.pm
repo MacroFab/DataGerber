@@ -193,10 +193,12 @@ sub _parseLine {
  my $line = shift;
  
  $self->{'line'}++;
+
+ chomp($line);
  
- return 1 if( ! defined($line) || ! length($line) || $line =~ /^\s*$/ );
- 
- chomp $line;
+ if ( ! defined($line) || ! length($line) || $line =~ /^\s*$/ || $line =~ /^\*$/ ) {
+     return 1;
+ }
  
  	# had we already started a multi-line parameter?
  if( defined( $self->{'parseState'}{'startParam'} ) ) {
