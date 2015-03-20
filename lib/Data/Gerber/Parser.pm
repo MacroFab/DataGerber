@@ -234,7 +234,7 @@ sub _parseLine {
  	# can have multiple commands on one line
  
  my @commands = split(/\*/, $line);
- my $comold;
+ 
  foreach my $com (@commands) {
 	 # from this point on, eliminate command-ending asterisks
 		
@@ -246,12 +246,10 @@ sub _parseLine {
 	 elsif( $com =~ /^D0/ || $com =~ /^D\d$/ ) {
 		$self->error("[parse] Cannot Have OpCode Alone on Line: $com");
 		if ($self->{'ignore'}) {
-			return $self->_parseMove($com,$comold);
-	 		$comold = $com;
+			return $self->_parseMove($com);
 		}
 		else { 
-			return $self->_parseMove($com,$comold);
-	 		$comold = $com;
+			return $self->_parseMove($com);
 		}
 	 }
 	 elsif( $com =~ /^D[1-9]\d+$/ ) {
@@ -261,8 +259,7 @@ sub _parseLine {
 		 return 1;
 	 }
 	 else {
-		 return $self->_parseMove($com,$comold);
-	 	 $comold = $com;
+		 return $self->_parseMove($com);
 	 }
  }
  
@@ -325,7 +322,6 @@ sub _parseMove {
 	
  my $self = shift;
  my $line = shift;
- my $lineold = shift;
 
  my ($coord, $opcode); 
  
@@ -379,12 +375,25 @@ sub _parseParam {
  my $pCode = substr($line, 0, 2, '');
 
 
- if    ($pCode eq 'FS') {$self->_paramFS( $line )}
- elsif ($pCode eq 'MO') {$self->_paramMO( $line )}
- elsif ($pCode eq 'AD') {$self->_paramAD( $line )}
- elsif ($pCode eq 'LP') {$self->_paramLP( $line )}
- elsif ($pCode eq 'SR') {$self->_paramSR( $line )}
- else { $self->error( $self->{'gerbObj'}->error() )};
+ if    ($pCode eq 'FS') {
+    return $self->_paramFS( $line )
+ }
+ elsif ($pCode eq 'MO') {
+    return $self->_paramMO( $line )
+ }
+ elsif ($pCode eq 'AD') {
+    return $self->_paramAD( $line )
+ }
+ elsif ($pCode eq 'LP') {
+    return $self->_paramLP( $line )
+ }
+ elsif ($pCode eq 'SR') {
+    return $self->_paramSR( $line )
+ }
+ elsif ($pCode eq 'AM' ) {
+    return $self->_paramAM( $line );
+ }
+
  
  return 1;
  
@@ -486,6 +495,22 @@ sub _paramAD {
  return 1;
  
 }
+
+ # Process Aperture Macro Definition Parameter
+ 
+sub _paramAM {
+    
+ my $self = shift;
+ my $data = shift;
+ 
+ if( ! $self->{'gerbObj'}->macro( $data ) ) {
+     $self->error( $self->{'gerbObj'}->error() ); # error bubbles up
+ 	return undef;
+ } 	
+ 
+ return 1;
+}
+
 
 sub _paramLP {
 
