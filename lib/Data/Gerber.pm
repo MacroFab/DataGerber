@@ -48,7 +48,7 @@ our $VERSION = "0.02";
  referred to as Gerber data) instructions in an object-oriented way, with
  methods and sub-classes for performing common activities such as:
  
-=over 1
+=over 8
 
 =item Parsing Data from Files via L<Gerber::Parser>
 =item Writing Data to Files via L<Gerber::Writer>
@@ -91,9 +91,9 @@ my %gCodes = (
 
 
 
-=item new
+=head2 new
 
- Constructor, creates a new instance of the class.
+Constructor, creates a new instance of the class.
  
  	my $gerb = Gerber->new();
 
@@ -127,6 +127,8 @@ sub new {
  
  $self->{'curAperture'} = undef;
  $self->{'lastMove'}    = 0;
+ $self->{'arcMode'}     = 0; # 0 = not arc (linear), 1 = single, 2 = multi
+ $self->{'arcDir'}      = 1; # 1 = CW, 2 = CCW
  
  	# default to inch mode if not specified
  
@@ -147,9 +149,9 @@ sub new {
 }
 
 
-=item error
+=head2 error
 
- Returns the last set error, or undef if no error has been set
+Returns the last set error, or undef if no error has been set
  
 =cut
 
@@ -161,19 +163,19 @@ sub error {
 }
 
 
-=item ignoreInvalid( FLAG )
+=head2 ignoreInvalid( FLAG )
 
- Set or read the IgnoreInvalid flag.
+Set or read the IgnoreInvalid flag.
  
- When the IgnoreInvalid flag is set to any true value, any invalid or deprecated
- G-Codes or parameters will be ignored. When this flag is set to any false value
- an error will be generated.
+When the IgnoreInvalid flag is set to any true value, any invalid or deprecated
+G-Codes or parameters will be ignored. When this flag is set to any false value
+an error will be generated.
  
- The default flag value is 0, or false.
+The default flag value is 0, or false.
  
- This method sets the flag if a flag argument is provided, or just reads the
- flag if the flag argument is not provided.  This method always returns the
- current flag value, after any set operation.
+This method sets the flag if a flag argument is provided, or just reads the
+flag if the flag argument is not provided.  This method always returns the
+current flag value, after any set operation.
  
 =cut
 
@@ -192,20 +194,20 @@ sub ignoreInvalid {
 }
 
 
-=item ignoreBlank( FLAG )
+=head2 ignoreBlank( FLAG )
 
- Set or read the IgnoreBlank flag.
+Set or read the IgnoreBlank flag.
  
- When the IgnoreBlank flag is set to any true value any drawing by a completely
- closed aperture (commonly used for comments, borders, etc.), after setting the
- flag, will be ignored when calculating the bounding box and size of the 
- drawing area.
+When the IgnoreBlank flag is set to any true value any drawing by a completely
+closed aperture (commonly used for comments, borders, etc.), after setting the
+flag, will be ignored when calculating the bounding box and size of the 
+drawing area.
  
- The default flag value is 0, or false.
+The default flag value is 0, or false.
  
- This method sets the flag if a flag argument is provided, or just reads the
- flag if the flag argument is not provided.  This method always returns the
- current flag value, after any set operation.
+This method sets the flag if a flag argument is provided, or just reads the
+flag if the flag argument is not provided.  This method always returns the
+current flag value, after any set operation.
  
 =cut
 
@@ -223,21 +225,21 @@ sub ignoreBlank {
 }
 
 
-=item aperture( OPTS )
+=head2 aperture( OPTS )
 
- Add or Get a custom aperture, defined by OPTS.
+Add or Get a custom aperture, defined by OPTS.
  
-=over 1
+=over 8
 
 =item Getting an Aperture that Has Been Defined
 
- To get an aperture that has already been defined, provide only the 'code' 
- key in OPTS, specifying the D-Code to retrieve, e.g.:
+To get an aperture that has already been defined, provide only the 'code' 
+key in OPTS, specifying the D-Code to retrieve, e.g.:
  
  	my $apt = $gerb->aperture( 'code' => 'D11' );
  	
- If the specified D-Code is found, a hashref will be returned with the following
- format:
+If the specified D-Code is found, a hashref will be returned with the following
+format:
  
  	{
  	
@@ -248,25 +250,25 @@ sub ignoreBlank {
  	  
  	}
 
- If the specified D-Code is not found, an empty hash ref will be returned.
+If the specified D-Code is not found, an empty hash ref will be returned.
  
- If an invalid D-Code is specified, undef will be returned and the error will
- be set.
+If an invalid D-Code is specified, undef will be returned and the error will
+be set.
  
 =item Creating an Aperture Definition
 
- To create an aperture definition, you must provide at a minimum the following 
- keys:
+To create an aperture definition, you must provide at a minimum the following 
+keys:
  
  	code	=> the D-code to use for this aperture
  	type	=> the type of aperture (C, R, O, P or aperture macro name)
  	
- Additionally, you may optionally supply a 'modifiers' key which provides
- any required modifiers.
+Additionally, you may optionally supply a 'modifiers' key which provides
+any required modifiers.
  
- Returns true (1) on success, or undef and sets the error on error.
+Returns true (1) on success, or undef and sets the error on error.
  
- For example:
+For example:
  
  	if( ! $gerb->aperture( 'code' => 'D11', 'type' => 'C', 'modifiers' => 0.0100 ) ) {
  		die $gerb->error();
@@ -339,19 +341,19 @@ sub aperture {
 }
 
 
-=item mode( MODE )
+=head2 mode( MODE )
 
- Set or get the mode (units) for commands.  The default mode is inches (IN).
+Set or get the mode (units) for commands.  The default mode is inches (IN).
  
- If MODE is not specified, returns the current mode for the document without
- making any changes.  
+If MODE is not specified, returns the current mode for the document without
+making any changes.  
  
- MODE can be one of:
+MODE can be one of:
  
-  IN (inches) or MM (millimeters)
+IN (inches) or MM (millimeters)
   
- Returns true (1) if successful, or undef and sets the error if an error
- occurs.
+Returns the specified mode if successful, or undef and sets the error if an error
+occurs.
  
  		# set mode
  	if( ! $gerb->mode('MM') ) {
@@ -381,65 +383,62 @@ sub mode {
  return $self->{'parameters'}{'mode'};
 }
 
-=item mode( MODE )
+=head2 macro( MACRO_NAME, MACRO_DEF )
 
- Set or get the mode (units) for commands.  The default mode is inches (IN).
- 
- If MODE is not specified, returns the current mode for the document without
- making any changes.  
- 
- MODE can be one of:
- 
-  IN (inches) or MM (millimeters)
-  
- Returns true (1) if successful, or undef and sets the error if an error
- occurs.
- 
- 		# set mode
- 	if( ! $gerb->mode('MM') ) {
- 		die $gerb->error();
- 	}
- 	
- 		# get mode
- 	my $mode = $gerb->mode();
- 	
- 	
+Set or get an aperture macro definition.
+
+To get an existing macro definition, simply provide the name of the macro
+as MACRO_NAME.  In this form, an arrayref will be returned specifying each
+line of the macro definition or undef if no such definition is found.
+
+To set, or overwrite an existing macro, also provide an arrayref as MACRO_DEF
+with one element per line in the definition.
+
+To set an aperture macro, provide the full macro definition string.
+
+
+e.g.:
+
+    $gerb->macro('FOO', [ "0,1,2,3,4", "5,6,7,8" ] );
+    
+        # returns [  "0,1,2,3,4", "5,6,7,8" ]
+    my $macro = $gerb->macro('FOO');
+    
+    
 =cut
 
 sub macro {
 
- my $self = shift;
+ my $self  = shift;
  my $macro = shift;
 
- my @macrolist = split('\*',$macro);
-
- my $macroname = $macrolist[0];
-# print $macroname."\n";
- my $macromod = $macrolist[1];
-# print $macromod."\n";
- if( defined($macro) ) {
-
-	 $self->{'macros'}{$macroname} = $macromod;
+ if( defined($macro) && $macro =~ /\*/) {
+     my @arr = split('\*',$macro);
+     my $name = shift(@arr);
+	 $self->{'macros'}{$name} = \@arr;
+	 return $self->{'macros'}{$name};
+ }
+ else {
+     return $self->{'macros'}{$macro};
  }
  
- return $self->{'macros'}{$macroname};
 }
 
 
-=item format( OPTS )
+=head2 format( OPTS )
 
- Set or retrieve the Format Specification for this object.
+Set or retrieve the Format Specification for this object.
  
- B<It is highly recommended to set the Format Specification first, before
- attempting to add commands, as the format has an impact on how certain
- area operations are performed> 
+B<It is highly recommended to set the Format Specification first, before
+attempting to add commands, as the format has an impact on how certain
+area operations are performed> 
  
-=over 1
+=over 8
 
 =item Retrieve Format Specification
 
- To retrieve the format specification for this Gerber object, call the format
- method with no arguments, which will return the following hash reference:
+To retrieve the format specification for this Gerber object, call the format
+method with no arguments, which will return the following hash reference:
  
  	{
  		'zero'		=> zero truncating setting
@@ -454,19 +453,19 @@ sub macro {
  
 =item Set Format Specification
 
- To set the format specification, pass a set of hash keys and values as the 
- argument to the method. 
+To set the format specification, pass a set of hash keys and values as the 
+argument to the method. 
  
- The following hash keys are supported:
+The following hash keys are supported:
  
-=over 1
+=over 8
 
 =item zero
 
- The zero omission setting, must be one of either L or T. (Representative of
- 'leading' and 'trailing' zero omission.) Any word that begins
- with L or T will function, which can be useful to write more readable code. The
- following are all equivalent:  
+The zero omission setting, must be one of either L or T. (Representative of
+'leading' and 'trailing' zero omission.) Any word that begins
+with L or T will function, which can be useful to write more readable code. The
+following are all equivalent:  
  
  	'zero' => 'L'
  	'zero' => 'Lead'
@@ -474,10 +473,10 @@ sub macro {
  	
 =item coordinates
 
- Which coordinate system to use, must be one of either A or I. (Representative
- of 'absolute' or 'incremental' coordinates.)  Any word that begins with either 
- A or I will function, which can be useful to write more readable code.  The 
- following at all equivalent:
+Which coordinate system to use, must be one of either A or I. (Representative
+of 'absolute' or 'incremental' coordinates.)  Any word that begins with either 
+A or I will function, which can be useful to write more readable code.  The 
+following at all equivalent:
  
  	'coordinates' => 'A'
  	'coordinates' => 'Abs'
@@ -485,38 +484,38 @@ sub macro {
  
 B<DO NOT USE INCREMENTAL COORDINATES>
 
- The use of incremental coordinates is strongly discouraged in the spec, and this
- module does not fully support them. Many features will not work properly with
- incremental coordinates.  Simply put: do not use incremental coordinates.
+The use of incremental coordinates is strongly discouraged in the spec, and this
+module does not fully support them. Many features will not work properly with
+incremental coordinates.  Simply put: do not use incremental coordinates.
  
- Incremental coordinates are not to be confused with modality of coordinates.
- Full coordinate modality, as compliant with the spec, is supported.
+Incremental coordinates are not to be confused with modality of coordinates.
+Full coordinate modality, as compliant with the spec, is supported.
 
 
 =item format
 
- The format of distances and values used in commands.  As the specification
- requires that both X and Y format be the same, this module does not provide
- the ability to distinguish between the two.  
+The format of distances and values used in commands.  As the specification
+requires that both X and Y format be the same, this module does not provide
+the ability to distinguish between the two.  
  
- The format of this entry is a hash reference, with the 'integer' and 
- 'decimal' keys specifying the precision of integers and decimals in all numbers.
- 
- For example:
+The format of this entry is a hash reference, with the 'integer' and 
+'decimal' keys specifying the precision of integers and decimals in all numbers.
+
+For example:
  
  	'format' => {
  		'integer' => 5,
  		'decimal' => 6
  	}
  	
- Note that 7 is the maximum format value.
+Note that 7 is the maximum format value.
  
 =back
 
- Setting the format returns true (1) if successful, or returns undef and sets
- the error message in case of failure.
+Setting the format returns true (1) if successful, or returns undef and sets
+the error message in case of failure.
  
- Example of setting the format specification:
+Example of setting the format specification:
  
 	 if( ! $gerb->format( 'zero' => 'L', 'coordinates' => 'A', 'format' =>
 	     { 'integer' => 5, 'decimal' => 5 } ) ) {
@@ -524,7 +523,7 @@ B<DO NOT USE INCREMENTAL COORDINATES>
 	     die $gerb->error();
 	 }
 
- You may specify any combination of specification values per call.
+You may specify any combination of specification values per call.
  
 =back
 
@@ -576,51 +575,51 @@ sub format {
 }
 
 
-=item function( OPTS )
+=head2 function( OPTS )
 
- Add a function to the document.
+Add a function to the document.
  
- Standard functions supported:
-=over 1
+Standard functions supported:
+=over 8
 =item Aperture Select
 =item G-Codes
 =item Moves
 =item Repeatable Parameter Calls
 =back
 
- OPTS is a hash that provides one or more of the following keys, which define
- the function:
+OPTS is a hash that provides one or more of the following keys, which define
+the function:
  
-=over 1
+=over 8
 =item aperture
- Select the aperture to use for following functions
+Select the aperture to use for following functions
  
 =item func
- Function Code (i.e. G-Codes)
+Function Code (i.e. G-Codes)
  
 =item coord
- Coordinate Data
+Coordinate Data
  
 =item op
- Operation Code (i.e. D-Code)
+Operation Code (i.e. D-Code)
 
 =item param
- Special parameter which can be repeated multiple times (e.g. LP, SR)
+Special parameter which can be repeated multiple times (e.g. LP, SR)
  
 =item comment
- A comment (used only with G04/G4, if you specify a comment for a non-G04
- command, it may be useful in certain file writers that would automatically
- generate a new comment for you)
+A comment (used only with G04/G4, if you specify a comment for a non-G04
+command, it may be useful in certain file writers that would automatically
+generate a new comment for you)
 
 =back
 
- You can specify any combination which represents a valid function in Gerber
- notation, e.g.: func, coord, and op; coord and op, func; aperture; param
+You can specify any combination which represents a valid function in Gerber
+notation, e.g.: func, coord, and op; coord and op, func; aperture; param
  
- Note that if you specify an aperture or param key, all other keys are ignored.
+Note that if you specify an aperture or param key, all other keys are ignored.
  
- The following are all valid function calls (presuming that you have already
- defined the apertures indicated, etc.):
+The following are all valid function calls (presuming that you have already
+defined the apertures indicated, etc.):
  
  	$gerb->function( 'func' => 'G01', 'coord' => 'X001000Y001000', 'op' => 'D01' );
  	$gerb->function( 'func' => 'G01' );
@@ -628,18 +627,18 @@ sub format {
  	$gerb->function( 'coord' => 'Y-300', 'op' => 'D03' );
  	$gerb->function( 'func' => 'G04', 'comment' => 'My Comment' );
  	
- This method returns true (1) upon success, and undef and sets the error message 
- on error.
+This method returns true (1) upon success, and undef and sets the error message 
+on error.
  
- B<Notes on Sequence>
-=over 1
+B<Notes on Sequence>
+=over 8
 
- This library handles gerber data in a streaming fashion - that is, function
- sequences must be issued in the same order they would be issued in a file, as
- previous functions impact the interpretation of current functions. 
+This library handles gerber data in a streaming fashion - that is, function
+sequences must be issued in the same order they would be issued in a file, as
+previous functions impact the interpretation of current functions. 
  
- All of your aperture, macro, and format specification activities should be
- done before creating functions.
+All of your aperture, macro, and format specification activities should be
+done before creating functions.
 
 =back
 
@@ -666,6 +665,24 @@ sub function {
  	 	 	return undef;
 		}
  	 }
+ }
+ 
+    # check for interpolation types
+ 
+ if( $opts{'func'} =~ /G01|G1/ ) {
+     $self->{'arcDir'} = 0;
+ }
+ if( $opts{'func'} =~ /G02|G2/ ) {
+     $self->{'arcDir'} = 1;
+ }
+ elsif( $opts{'func'} =~ /G03|G3/ ) {
+     $self->{'arcDir'} = 2;
+ }
+ elsif( $opts{'func'} eq 'G74' ) {
+     $self->{'arcMode'} = 1;
+ }
+ elsif( $opts{'func'} eq 'G75' ) {
+     $self->{'arcMode'} = 2;
  }
  
  
@@ -719,32 +736,32 @@ sub function {
 }
 
 
-=item functions( OPTS )
+=head2 functions( OPTS )
 
- Count number of functions, or retrieve one or more functions.
+Count number of functions, or retrieve one or more functions.
  
- When called with no arguments, this method returns all functions that have
- been added the document.
+When called with no arguments, this method returns all functions that have
+been added the document.
  
- OPTS is a hash with any of the following keys:
-=over 1
+OPTS is a hash with any of the following keys:
+=over 8
 
 =item count
 
- Count number of functions in the document
+Count number of functions in the document
 
 =item num
 
- Retrieve one function, the numth in the document (zero-indexed)
+Retrieve one function, the numth in the document (zero-indexed)
 =back
 
- Examples:
+Examples:
  
  	my  $fCount = $gerb->functions( 'count' => 1 );
  	my $3rdFunc = $gerb->functions( 'num' => 2 );
  	my   @funcs = $gerb->functions();
  	
- This method returns undef, and sets the error message if an error occurs.
+This method returns undef, and sets the error message if an error occurs.
  
 
 =cut
@@ -775,23 +792,23 @@ sub functions {
 }
 
 
-=item boundingBox
+=head2 boundingBox
 
- Returns the coordinates of a box which exactly holds the entire contents.
+Returns the coordinates of a box which exactly holds the entire contents.
  
- The result is an array with four elements, representing the Left-most X, Bottom-most
- Y, Right-most X, and Top-Most Y.
+The result is an array with four elements, representing the Left-most X, Bottom-most
+Y, Right-most X, and Top-Most Y.
  
- When considered as tuples of X, Y and corners, the first tuple would represent
- the bottom-left corner, and the second the top-right.
+When considered as tuples of X, Y and corners, the first tuple would represent
+the bottom-left corner, and the second the top-right.
  
- e.g.:
+e.g.:
  
  	my ($lx, $by, $rx, $ty) = $gerb->boundingBox();
  	
  		# ex: 0, 0, 53.7, 123.0056
  	
- All values are floats, in the units specified by the format spec.
+All values are floats, in the units specified by the format spec.
  	
 =cut
 
@@ -808,9 +825,9 @@ sub boundingBox {
 }
 
 
-=item width 
+=head2 width 
 
- Returns the width of the bounding box, in native units as a decimal.
+Returns the width of the bounding box, in native units as a decimal.
  
  	my $width = $gerb->width();
 
@@ -824,9 +841,9 @@ sub width {
  	
 }
 
-=item height 
+=head2 height 
 
- Returns the height of the bounding box, in native units as a decimal.
+Returns the height of the bounding box, in native units as a decimal.
  
  	my $height = $gerb->height();
 
@@ -924,7 +941,6 @@ sub _processCoords {
  my %pos = %{ $sizeRet->[0] };
  my %off = %{ $sizeRet->[1] };
 
-# print Dumper($sizeRet)."\n";
 
  	# default to last coordinate value for axis
  	# if not supplied (coordinates are modal)
