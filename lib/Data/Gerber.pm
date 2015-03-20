@@ -710,8 +710,6 @@ sub function {
  
  my %func;
  
-
- 
  foreach('func', 'coord', 'op', 'comment') {
  	 if( exists( $opts{$_} ) && defined( $opts{$_} ) ) {
  	 	 $func{$_} = $opts{$_};
