@@ -46,7 +46,7 @@ Data::Gerber::Parser
 
 =head1 METHODS
 
-=cuta
+=cut
 
 
 =item new( OPTS )
@@ -494,7 +494,7 @@ sub _paramLP {
  
  $data =~ s/\*.*//g;
  
- if( $data ne 'D' && $data ne 'R' ) {
+ if( $data ne 'D' && $data ne 'C' ) {
  	 $self->error("[parse] Invalid LP Parameter Value: $data");
  	 return undef;
  }
