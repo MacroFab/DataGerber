@@ -751,6 +751,7 @@ Count number of functions in the document
 =item num
 
 Retrieve one function, the numth in the document (zero-indexed)
+
 =back
 
 Examples:
@@ -953,16 +954,17 @@ sub _processCoords {
  	 }
  }
  
- 	# process offsets
+ 	# process offsets for linear interoplation moves
  	
- if( exists($off{'I'}) && defined($off{'I'}) ) {
- 	 $pos{'X'} += $off{'I'};
+ if( $self->{'arcDir'} == 0 ) {
+     if( exists($off{'I'}) && defined($off{'I'}) ) {
+         $pos{'X'} += $off{'I'};
+     }
+     
+     if( exists($off{'J'}) && defined($off{'J'}) ) {
+         $pos{'Y'} += $off{'J'};
+     }
  }
- 
- if( exists($off{'J'}) && defined($off{'J'}) ) {
- 	 $pos{'Y'} += $off{'J'};
- }
-
  
  
  # TODO: Consider size of aperture or image when calculating the data
@@ -991,8 +993,16 @@ sub _processCoords {
  	     ( exists($self->{'aperture'}{ $self->{'curAperture'} }{'diameter'} ) &&
  	       $self->{'aperture'}{ $self->{'curAperture'} }{'diameter'} > 0.0 ) ) {
  	
- 	 			# update bounding box coordinates if move with aperture open, or flash
- 	 		$self->_updateCoords(\%pos);
+ 	 			# update bounding box coordinates if move with aperture open
+ 	 			
+ 	 		if( $self->{'arcDir'} == 0 ) {
+ 	 		    $self->_updateCoords(\%pos);
+ 	 		}
+ 	 		else {
+ 	 		       # for arcs, we need the I and J parameters to properly
+ 	 		       # calculate their bounding boxes
+ 	 		    $self->_updateCoords(\%pos, \%off);
+ 	 		}
  	 }
  }
  else {
@@ -1011,12 +1021,107 @@ sub _processCoords {
  
 }
 
+
 sub _updateCoords {
 
  my $self = shift;
  my  $pos = shift; # hashref, X,Y coords
+ my  $arc = shift; # for arc moves, I and J may be needed
  
  return if( ! ref($pos) eq 'HASH' || ! exists($pos->{'X'}) || ! exists($pos->{'Y'}) );
+ 
+    # check to see if we're dealing with an arc
+ if( defined($arc) && ref($arc) eq 'HASH' ) {
+     
+        # our start point is our previous final coordinate
+     my $spX = $self->{'lastcoord'}{'X'};
+     my $spY = $self->{'lastcoord'}{'Y'};
+     
+        # our center is provided using I and J params
+        
+     my $cX = $arc->{'I'};
+     my $cY = $arc->{'J'};
+     
+        # Spec 4.4.3.1, etc, center offsets default to 0 if not specified
+     $cX = 0 if( ! defined($cX) );
+     $cY = 0 if( ! defined($cY) );
+     
+        # our end point is the target of the move
+        
+     my $epX = $pos->{'X'};
+     my $epY = $pos->{'Y'};
+     
+        
+     my($dX, $dY, @farpoints);
+
+
+     if( $self->{'arcMode'} == 2 ) {
+         
+                # calculate radius for multi-segment arcs
+
+         $dX = $spX + $cX;
+         $dY = $spY + $cY;
+         
+         if( $spX == $epX && $spY == $epY ) {
+                # 360 degrees, throw in all furthest points
+             push(@farpoints, 
+                 [$spX, $spY], 
+                 [$cX - $dX, $cY],
+                 [$cX, $cY - $dY],
+                 [$cX + $dX, $cY],
+                 [$cX, $cY + $dY]
+             );
+         }
+         else {
+                # not 360 degrees, calculate 4 possible cardinal max points
+                # in addition to start and end points
+             
+             push(@farpoints, [$spX, $spY], [$epX, $epY]);
+             
+             my @targets = ( [ $cpX + $dX, $cpY + $dY ], 
+                             [ $cpX - $dX, $cpY + $dY ], 
+                             [ $cpX + $dX, $cpY - $dY ],
+                             [ $cpX - $dX, $cpY - $dY ]
+                           );
+             
+             foreach my $i (0..$#targets) {
+                 if( $self->{'arcDir'} == 1 ) {
+                        #clock-wise    
+                    
+                     if( $targets[$i][0] <= $epX && $targets[$i][1] >= $spY ) {
+                         push(@farpoints, $targets[$i]);    
+                     }
+                     elsif( $targets[$i][0] <= $spX && $targets[$i][1] <= $epY ) {
+                         push(@farpoints, $targets[$i]);                         
+                     }
+                    
+                 }
+                 else {
+                        #ccw
+                     if( $targets[$i][0] <= $spX && $targets[$i][1] >= $epY ) {
+                         push(@farpoints, $targets[$i];
+                     }
+                     elsif( $targets[$i][0] <= $epX && $targets[$i][1] <= $spY ) {
+                         push(@farpoints, $targets[$i];
+                     }
+                     
+                 }
+             } #end foreach
+         } #end else not 360 degrees
+     }
+     else {
+         #radius for single-segment arc
+         
+            # no arc, start and end are the same, not allowed for single-segment
+         if( $epX == $spX && $epY == $spY ) {
+             return;
+         }
+         
+         # 
+     }
+    
+ }
+ 
  
  if( ! defined($self->{'boundaries'}{'LX'}) ) {
  	 $self->{'boundaries'}{'LX'} = $pos->{'X'};
@@ -1164,28 +1269,44 @@ sub _leadingzeroExtend {
 
 
 
-=item convert( MASTER)
+=head2 convert( NEW_OBJECT )
 
- Convert a function of an Object to a master set of parameters, and add to specified object.
+Translate the current gerber object instructions into a new type of gerber object,
+based on format, units, etc.  NEW_OBJECT should be an initialized Data::Gerber
+object, with the format/unit/etc parameters specified. 
+
+After completion, NEW_OBJECT will represent the same functions and parameters as
+the current Gerber object, translated to the new set of formats.
+
  
- Standard functions supported:
-=over 1
-=item Aperture Select
-=item G-Codes
-=item Moves
-=item Repeatable Parameter Calls
-=back
- Warning: No Support for Aperture Macros!
+Standard functions supported:
 
- MASTER consists of a Gerber object with 'master parameters' pre-specified
+=over 8
+
+=item Aperture Select
+
+=item G-Codes
+
+=item Moves
+
+=item Repeatable Parameter Calls
+
+=back
+
+B<Warning: No Support for Aperture Macros!>
 
 =back
 
 =cut
 sub convert {	
+    
  my $self = shift;
  my $master = shift;
+ 
 ########## Parse each Gerber Function: If header conversion applies, apply it.
+
+# CC - TODO - Stop reaching down into the private variables of other objects!
+#             Just because you can, doesn't mean you should!
 
 ### Variable Initialization
  my $apt; my $Dcount;						#Used for listing Aperture codes D10 - D999; spec supports greater
@@ -1322,7 +1443,6 @@ sub convert {
 					}
 
 				}
-#				print "Integer Format Converted" . "\n";
 			}
 		}
 		$tempcoord = join('',@coordsplit);
@@ -1347,13 +1467,8 @@ sub convert {
 					}
 				}
 				else {
-	#				if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-	#				if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-	#				if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-	#				if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
 					$coord = $xcoord . $ycoord . $icoord . $jcoord;
 				}
-#				print "Decimal Format Converted" . "\n";
 			}
 		}
 		$coord = join('',@coordsplit);
@@ -1422,17 +1537,12 @@ sub translate {
  $TransCoord[0] = shift;
  $TransCoord[1] = shift;
 
- my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
-
-
-# $TransCoord[0] = sprintf("%f", $TransCoord[0]);
-
+    # CC - TODO - Why is this here?
+    
+ my $fDiv = 10 ** 3; 
+ 
  $TransCoord[0] *= $fDiv;
-
-# $TransCoord[1] = sprintf("%f", $TransCoord[1]);
  $TransCoord[1] *= $fDiv;
-
-# print "Translate".Dumper(@TransCoord)."\n";
 
  my @XYCoord;
  my %XYCoord;
@@ -1469,9 +1579,6 @@ sub translate {
 		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
 			if (exists($self->{'functions'}[$s_func]{'op'}) && defined($self->{'functions'}[$s_func]{'op'})){
 				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
-#			my $pos = {'X'=>$self->{'functions'}[$s_func]{'xy_coords'}[0], 
-#				   'Y'=>$self->{'functions'}[$s_func]{'xy_coords'}[1]};
-#			$self->_updateCoords($pos);
 			}
 		}
 	}
