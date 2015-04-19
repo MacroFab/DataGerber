@@ -203,7 +203,7 @@ sub _parseLine {
 
  chomp($line);
  
- if ( ! defined($line) || ! length($line) || $line =~ /^\s*$/ || $line =~ /^\*$/ ) {
+ if ( ! defined($line) || ! length($line) || $line =~ /^\s*$/ || $line =~ /^\*$/ || $line =~ /^\s*\*\s*$/) {
      return 1;
  }
  
