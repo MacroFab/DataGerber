@@ -246,7 +246,7 @@ format:
  	  'code'      => D-code for aperture,
  	  'type'      => Aperture type (built-in or macro name)
  	  'modifiers' => String containing list of modifiers (if set)
- 	  'diameter'    => diameter in format units (circle type only)
+ 	  'diameter'  => diameter in format units (circle type only)
  	  
  	}
 
@@ -282,6 +282,7 @@ sub aperture {
 
  my $self = shift;
  my %opts = @_;
+ 
  
  if( ! exists( $opts{'code'} ) ) {
  	 $self->error("[aperture] CODE Required");
@@ -340,6 +341,33 @@ sub aperture {
  	 
 }
 
+
+=head2 apertures
+
+Get All Defined Apertures 
+
+Returns a hashref with the following structure:
+
+    {
+        aperture_code1 => {
+            'type'       => Aperture type code or macro name
+            'modifiers' => string containing list of modifiers,
+            'diameter'   => diameter of circle in 'format' units (circle type only)
+        },
+        aperture_code2 => { ... },
+        aperture_code3 => { ... },
+        ...
+    }
+    
+=cut
+
+sub apertures {
+    
+ my $self = shift;
+ 
+ return \%{ $self->{'apertures'} }; # shallow copy to prevent outside modification
+}
+  
 
 =head2 mode( MODE )
 
@@ -403,27 +431,50 @@ e.g.:
     
         # returns [  "0,1,2,3,4", "5,6,7,8" ]
     my $macro = $gerb->macro('FOO');
-    
+
     
 =cut
 
 sub macro {
 
- my $self  = shift;
+ my  $self = shift;
  my $macro = shift;
+ my  $aRef = shift;
 
- if( defined($macro) && $macro =~ /\*/) {
-     my @arr = split('\*',$macro);
-     my $name = shift(@arr);
-	 $self->{'macros'}{$name} = \@arr;
-	 return $self->{'macros'}{$name};
+ if( defined($aRef) && ref($aRef) eq 'ARRAY' ) {
+	 $self->{'macros'}{$macro} = $aRef;
+	 return $self->{'macros'}{$macro};
+ }
+ elsif( defined($macro) ) {
+     return $self->{'macros'}{$macro};
  }
  else {
-     return $self->{'macros'}{$macro};
+     return {};
  }
  
 }
 
+=head2 macros
+
+Get all set macros
+
+Returns a hashref with following structure:
+
+    {
+        macroName1 => [ def ],
+        macroName2 => [ def ],
+        ...
+    }
+    
+=cut
+
+sub macros {
+ 
+ my $self = shift;
+ 
+ return \%{ $self->{'macros'} }; # shallow copy to prevent mod
+    
+}
 
 =head2 format( OPTS )
 
@@ -536,7 +587,7 @@ sub format {
  my $self = shift;
  my %opts = @_;
  
- return $self->{'parameters'}{'FS'} if( keys(%opts) < 1 );
+ return \%{ $self->{'parameters'}{'FS'} } if( keys(%opts) < 1 );
  
  if( exists( $opts{'zero'} ) ) {
  	 if( $opts{'zero'} =~ /^[lt]/i ) {
@@ -656,6 +707,25 @@ sub function {
  	 	 $self->error("[function] Invalid Function Code: $opts{'func'}");
  	 	 return undef;
  	 }
+ 	 
+        # check for interpolation types
+     
+     if( $opts{'func'} =~ /G01|G1/ ) {
+         $self->{'arcDir'} = 0;
+     }
+     if( $opts{'func'} =~ /G02|G2/ ) {
+         $self->{'arcDir'} = 1;
+     }
+     elsif( $opts{'func'} =~ /G03|G3/ ) {
+         $self->{'arcDir'} = 2;
+     }
+     elsif( $opts{'func'} eq 'G74' ) {
+         $self->{'arcMode'} = 1;
+     }
+     elsif( $opts{'func'} eq 'G75' ) {
+         $self->{'arcMode'} = 2;
+     }
+ 	 
  }
  
  if( exists($opts{'op'}) && defined($opts{'op'}) ) {
@@ -667,23 +737,6 @@ sub function {
  	 }
  }
  
-    # check for interpolation types
- 
- if( $opts{'func'} =~ /G01|G1/ ) {
-     $self->{'arcDir'} = 0;
- }
- if( $opts{'func'} =~ /G02|G2/ ) {
-     $self->{'arcDir'} = 1;
- }
- elsif( $opts{'func'} =~ /G03|G3/ ) {
-     $self->{'arcDir'} = 2;
- }
- elsif( $opts{'func'} eq 'G74' ) {
-     $self->{'arcMode'} = 1;
- }
- elsif( $opts{'func'} eq 'G75' ) {
-     $self->{'arcMode'} = 2;
- }
  
  
  	# if aperture specified, only allow aperture select in the function
@@ -1078,10 +1131,10 @@ sub _updateCoords {
              
              push(@farpoints, [$spX, $spY], [$epX, $epY]);
              
-             my @targets = ( [ $cpX + $dX, $cpY + $dY ], 
-                             [ $cpX - $dX, $cpY + $dY ], 
-                             [ $cpX + $dX, $cpY - $dY ],
-                             [ $cpX - $dX, $cpY - $dY ]
+             my @targets = ( [ $cX + $dX, $cY + $dY ], 
+                             [ $cX - $dX, $cY + $dY ], 
+                             [ $cX + $dX, $cY - $dY ],
+                             [ $cX - $dX, $cY - $dY ]
                            );
              
              foreach my $i (0..$#targets) {
@@ -1099,10 +1152,10 @@ sub _updateCoords {
                  else {
                         #ccw
                      if( $targets[$i][0] <= $spX && $targets[$i][1] >= $epY ) {
-                         push(@farpoints, $targets[$i];
+                         push(@farpoints, $targets[$i]);
                      }
                      elsif( $targets[$i][0] <= $epX && $targets[$i][1] <= $spY ) {
-                         push(@farpoints, $targets[$i];
+                         push(@farpoints, $targets[$i]);
                      }
                      
                  }

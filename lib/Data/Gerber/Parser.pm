@@ -503,9 +503,12 @@ sub _paramAM {
  my $self = shift;
  my $data = shift;
  
- if( ! $self->{'gerbObj'}->macro( $data ) ) {
+ my  @arr = split(/\*/, $data);
+ my $name = shift(@arr);
+ 
+ if( ! $self->{'gerbObj'}->macro($name, \@arr) ) {
      $self->error( $self->{'gerbObj'}->error() ); # error bubbles up
- 	return undef;
+ 	 return undef;
  } 	
  
  return 1;
