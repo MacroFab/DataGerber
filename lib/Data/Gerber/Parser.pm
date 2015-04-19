@@ -82,6 +82,8 @@ sub new {
  $self->{'line'}        = 0;
  $self->{'ignore'}      = 0;
  $self->{'ignoreBlank'} = 0;
+ $self->{'lastDCode'}   = undef;
+ 
  
  if( exists($opts{'ignoreInvalid'}) && defined($opts{'ignoreInvalid'}) ) {
  	$self->{'ignore'} = $opts{'ignore'};
@@ -134,8 +136,9 @@ sub parse {
  my $self = shift;
  my $data = shift;
 
- $self->{'error'} = undef;
- $self->{'line'}  = 0;
+ $self->{'error'}     = undef;
+ $self->{'line'}      = 0;
+ $self->{'lastDCode'} = undef;
  
  if( ! defined($data) ) {
  	 $self->error("[parse] ERROR: No Data Provided");
@@ -157,7 +160,9 @@ sub parse {
  	 }
  	 
  	 foreach(@{ $data }) {
- 	 	 $self->_parseLine($_);
+ 	 	 if( ! $self->_parseLine($_) ) {
+ 	 	     return undef;
+ 	 	 }
  	 }
  }
  else {
@@ -175,8 +180,10 @@ sub parse {
  	 }
  	 
  	 while(<$rfh>) {
-# 	 	 print STDERR "DBG: $_";
- 	 	 return undef if( ! $self->_parseLine($_) );
+ 	 	 if( ! $self->_parseLine($_) ) {
+ 	 	     close($rfh);
+ 	 	     return undef;
+ 	 	 }
  	 }
  	 
  	 close($rfh);
@@ -234,37 +241,36 @@ sub _parseLine {
  	# can have multiple commands on one line
  
  my @commands = split(/\*/, $line);
- my $comold;
+ 
  foreach my $com (@commands) {
 	 # from this point on, eliminate command-ending asterisks
 		
 	 $com =~ s/\*$//;
 	 
 	 if( $com =~ /^G\d+/ ) {
-		 return $self->_parseCommand($com);
+		 return undef if(! $self->_parseCommand($com));
 	 }
 	 elsif( $com =~ /^D0/ || $com =~ /^D\d$/ ) {
-		$self->error("[parse] Cannot Have OpCode Alone on Line: $com");
 		if ($self->{'ignore'}) {
-			return $self->_parseMove($com,$comold);
-	 		$comold = $com;
+			return undef if(! $self->_parseMove($com));
 		}
 		else { 
-			return $self->_parseMove($com,$comold);
-	 		$comold = $com;
+		    $self->error("[parse] Cannot Have OpCode Alone on Line: $com");
+			return undef if(! $self->_parseMove($com));
 		}
 	 }
 	 elsif( $com =~ /^D[1-9]\d+$/ ) {
-		 return $self->_parseAperture($com);
+		 return undef if(! $self->_parseAperture($com));
 	 }
 	 elsif( $com =~ /^M02/ ) {
 		 return 1;
 	 }
 	 else {
-		 return $self->_parseMove($com,$comold);
-	 	 $comold = $com;
+		 return undef if(! $self->_parseMove($com) );
 	 }
  }
+ 
+ return 1;
  
 }
 
@@ -325,21 +331,29 @@ sub _parseMove {
 	
  my $self = shift;
  my $line = shift;
- my $lineold = shift;
 
  my ($coord, $opcode); 
  
  if( $line =~ /^(.+)(D\d+)/ ) {
 	 $coord = $1;
 	 $opcode = $2;
+	 $self->{'lastDCode'} = $opcode;
  }
  elsif( $line =~ /^(D0*[1-9]{1})/ ) {
 	 $opcode = $1;
+	 $self->{'lastDCode'} = $opcode;
  }
  else {
-		# otherwise, we don't know what you mean!
-	 $self->error("[parse] Invalid move instruction: $line");
-	 return undef;
+        # can we re-use a previous dcode?  Re-using d-codes is deprecated in the
+        # spec, but many tools still write this notation
+     if( defined($self->{'lastDCode'}) && length($self->{'lastDCode'}) ) {
+         $opcode = $self->{'lastDCode'};
+     }
+     else {
+            # otherwise, we don't know what you mean!
+         $self->error("[parse] Invalid move instruction: $line");
+         return undef;
+     }
  }
 
  if( ! $self->{'gerbObj'}->function('coord' => $coord, 'op' => $opcode) ) {
