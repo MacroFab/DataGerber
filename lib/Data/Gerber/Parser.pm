@@ -178,15 +178,20 @@ sub parse {
  	 	 $self->error("[parse] ERROR: Could not open $data -> $!");
  	 	 return undef;
  	 }
- 	 
- 	 while(<$rfh>) {
- 	 	 if( ! $self->_parseLine($_) ) {
- 	 	     close($rfh);
- 	 	     return undef;
- 	 	 }
- 	 }
- 	 
- 	 close($rfh);
+
+     local $/;
+     my $data = <$rfh>;
+
+     my @lines = split(/\r[^\n]|\n/, $data);
+
+     close($rfh);
+
+     foreach my $line ( @lines ) {
+         $line =~ s/\r//g;
+         if ( !$self->_parseLine($line) ) {
+             return undef;
+         }
+     }
  }
  
  return $self->{'gerbObj'};
