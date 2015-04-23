@@ -82,6 +82,8 @@ sub new {
  $self->{'line'}        = 0;
  $self->{'ignore'}      = 0;
  $self->{'ignoreBlank'} = 0;
+ $self->{'lastDCode'}   = undef;
+ 
  
  if( exists($opts{'ignoreInvalid'}) && defined($opts{'ignoreInvalid'}) ) {
  	$self->{'ignore'} = $opts{'ignore'};
@@ -134,8 +136,9 @@ sub parse {
  my $self = shift;
  my $data = shift;
 
- $self->{'error'} = undef;
- $self->{'line'}  = 0;
+ $self->{'error'}     = undef;
+ $self->{'line'}      = 0;
+ $self->{'lastDCode'} = undef;
  
  if( ! defined($data) ) {
  	 $self->error("[parse] ERROR: No Data Provided");
@@ -157,7 +160,9 @@ sub parse {
  	 }
  	 
  	 foreach(@{ $data }) {
- 	 	 $self->_parseLine($_);
+ 	 	 if( ! $self->_parseLine($_) ) {
+ 	 	     return undef;
+ 	 	 }
  	 }
  }
  else {
@@ -173,13 +178,20 @@ sub parse {
  	 	 $self->error("[parse] ERROR: Could not open $data -> $!");
  	 	 return undef;
  	 }
- 	 
- 	 while(<$rfh>) {
-# 	 	 print STDERR "DBG: $_";
- 	 	 return undef if( ! $self->_parseLine($_) );
- 	 }
- 	 
- 	 close($rfh);
+
+     local $/;
+     my $data = <$rfh>;
+
+     my @lines = split(/\r[^\n]|\n/, $data);
+
+     close($rfh);
+
+     foreach my $line ( @lines ) {
+         $line =~ s/\r//g;
+         if ( !$self->_parseLine($line) ) {
+             return undef;
+         }
+     }
  }
  
  return $self->{'gerbObj'};
@@ -196,7 +208,7 @@ sub _parseLine {
 
  chomp($line);
  
- if ( ! defined($line) || ! length($line) || $line =~ /^\s*$/ || $line =~ /^\*$/ ) {
+ if ( ! defined($line) || ! length($line) || $line =~ /^\s*$/ || $line =~ /^\*$/ || $line =~ /^\s*\*\s*$/) {
      return 1;
  }
  
@@ -241,27 +253,29 @@ sub _parseLine {
 	 $com =~ s/\*$//;
 	 
 	 if( $com =~ /^G\d+/ ) {
-		 return $self->_parseCommand($com);
+		 return undef if(! $self->_parseCommand($com));
 	 }
 	 elsif( $com =~ /^D0/ || $com =~ /^D\d$/ ) {
-		$self->error("[parse] Cannot Have OpCode Alone on Line: $com");
 		if ($self->{'ignore'}) {
-			return $self->_parseMove($com);
+			return undef if(! $self->_parseMove($com));
 		}
 		else { 
-			return $self->_parseMove($com);
+		    $self->error("[parse] Cannot Have OpCode Alone on Line: $com");
+			return undef if(! $self->_parseMove($com));
 		}
 	 }
 	 elsif( $com =~ /^D[1-9]\d+$/ ) {
-		 return $self->_parseAperture($com);
+		 return undef if(! $self->_parseAperture($com));
 	 }
 	 elsif( $com =~ /^M02/ ) {
 		 return 1;
 	 }
 	 else {
-		 return $self->_parseMove($com);
+		 return undef if(! $self->_parseMove($com) );
 	 }
  }
+ 
+ return 1;
  
 }
 
@@ -328,14 +342,24 @@ sub _parseMove {
  if( $line =~ /^(.+)(D\d+)/ ) {
 	 $coord = $1;
 	 $opcode = $2;
+	 $self->{'lastDCode'} = $opcode;
  }
  elsif( $line =~ /^(D0*[1-9]{1})/ ) {
 	 $opcode = $1;
+	 $self->{'lastDCode'} = $opcode;
  }
  else {
-		# otherwise, we don't know what you mean!
-	 $self->error("[parse] Invalid move instruction: $line");
-	 return undef;
+        # can we re-use a previous dcode?  Re-using d-codes is deprecated in the
+        # spec, but many tools still write this notation
+     if( defined($self->{'lastDCode'}) && length($self->{'lastDCode'}) ) {
+         $opcode = $self->{'lastDCode'};
+         $coord  = $line;
+     }
+     else {
+            # otherwise, we don't know what you mean!
+         $self->error("[parse] Invalid move instruction: $line");
+         return undef;
+     }
  }
 
  if( ! $self->{'gerbObj'}->function('coord' => $coord, 'op' => $opcode) ) {
@@ -375,25 +399,12 @@ sub _parseParam {
  my $pCode = substr($line, 0, 2, '');
 
 
- if    ($pCode eq 'FS') {
-    return $self->_paramFS( $line )
- }
- elsif ($pCode eq 'MO') {
-    return $self->_paramMO( $line )
- }
- elsif ($pCode eq 'AD') {
-    return $self->_paramAD( $line )
- }
- elsif ($pCode eq 'LP') {
-    return $self->_paramLP( $line )
- }
- elsif ($pCode eq 'SR') {
-    return $self->_paramSR( $line )
- }
- elsif ($pCode eq 'AM' ) {
-    return $self->_paramAM( $line );
- }
-
+ if    ($pCode eq 'FS') {$self->_paramFS( $line )}
+ elsif ($pCode eq 'MO') {$self->_paramMO( $line )}
+ elsif ($pCode eq 'AD') {$self->_paramAD( $line )}
+ elsif ($pCode eq 'LP') {$self->_paramLP( $line )}
+ elsif ($pCode eq 'SR') {$self->_paramSR( $line )}
+ else { $self->error( $self->{'gerbObj'}->error() )};
  
  return 1;
  
@@ -495,25 +506,6 @@ sub _paramAD {
  return 1;
  
 }
-
- # Process Aperture Macro Definition Parameter
- 
-sub _paramAM {
-    
- my $self = shift;
- my $data = shift;
- 
- my  @arr = split(/\*/, $data);
- my $name = shift(@arr);
- 
- if( ! $self->{'gerbObj'}->macro($name, \@arr) ) {
-     $self->error( $self->{'gerbObj'}->error() ); # error bubbles up
- 	 return undef;
- } 	
- 
- return 1;
-}
-
 
 sub _paramLP {
 
