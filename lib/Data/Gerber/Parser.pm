@@ -353,6 +353,7 @@ sub _parseMove {
         # spec, but many tools still write this notation
      if( defined($self->{'lastDCode'}) && length($self->{'lastDCode'}) ) {
          $opcode = $self->{'lastDCode'};
+         $coord  = $line;
      }
      else {
             # otherwise, we don't know what you mean!

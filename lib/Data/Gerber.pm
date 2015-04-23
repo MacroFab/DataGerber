@@ -692,15 +692,12 @@ sub function {
  }
  
  my %func;
- 
 
- 
  foreach('func', 'coord', 'op', 'comment') {
  	 if( exists( $opts{$_} ) && defined( $opts{$_} ) ) {
  	 	 $func{$_} = $opts{$_};
  	 }
  }
- 
 
  if( exists($opts{'coord'}) && defined($opts{'coord'}) ) {
  	 
@@ -711,7 +708,7 @@ sub function {
  	
  	 $func{'xy_coords'} = $self->_processCoords($opts{'coord'}, $opts{'op'});
  }
- 
+
  push(@{ $self->{'functions'} }, \%func);
  
  return 1;
@@ -923,8 +920,6 @@ sub _processCoords {
  
  my %pos = %{ $sizeRet->[0] };
  my %off = %{ $sizeRet->[1] };
-
-# print Dumper($sizeRet)."\n";
 
  	# default to last coordinate value for axis
  	# if not supplied (coordinates are modal)
