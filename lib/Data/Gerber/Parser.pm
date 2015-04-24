@@ -86,7 +86,7 @@ sub new {
  
  
  if( exists($opts{'ignoreInvalid'}) && defined($opts{'ignoreInvalid'}) ) {
- 	$self->{'ignore'} = $opts{'ignore'};
+ 	$self->{'ignore'} = $opts{'ignoreInvalid'};
  }
 
  if( exists($opts{'ignoreBlank'}) && defined($opts{'ignoreBlank'}) ) {
