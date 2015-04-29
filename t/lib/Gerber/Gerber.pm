@@ -169,7 +169,7 @@ sub reset
 
     my $self = shift;
 
-    my $self->{'gerber'} = Data::Gerber->new();
+    $self->{'gerber'} = Data::Gerber->new();
 
 }
 

@@ -772,7 +772,7 @@ sub function {
 
  if( exists($opts{'coord'}) && defined($opts{'coord'}) ) {
  	 
- 	 if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) {
+ 	 if( ( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) && $opts{'func'} !~ m/G0[23]/ ) {
  	 	 $self->error("[function] Operation Code must be provided when Coordinate Data is provided");
  	 	 return undef;
  	 }

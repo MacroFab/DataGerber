@@ -153,22 +153,25 @@ sub write {
  my $wfh;
  my $isFh = 0;
  
- if( ! ref($file) eq 'GLOB' && ! eval { $file->can('write') } ) {
-     
-     print STDERR "DBG: Got file path\n";
-     
+ eval { $file->can('write') };
+
+ if( ref($file) eq 'GLOB' && !$@ ) {
+      print STDERR "DBG: Got file handle\n";
+
+     # this is a file handle of some sort?
+     $wfh  = $file;
+     $isFh = 1;
+
+ }
+ else {
+    print STDERR "DBG: Got file path\n";
+
      # this is a scalar, let's open a file at that path
      if( ! open($wfh, '>', $file) ) {
          $self->error("[write] Cannot open $file for writing -> $!");
          return undef;
      }
- }
- else {
-     print STDERR "DBG: Got file handle\n";
-     
-     # this is a file handle of some sort?
-     $wfh  = $file;
-     $isFh = 1;
+
  }
  
  my   $mode = $gerb->mode();

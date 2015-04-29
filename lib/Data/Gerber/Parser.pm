@@ -244,7 +244,6 @@ sub _parseLine {
  }
  
  	# can have multiple commands on one line
- 
  my @commands = split(/\*/, $line);
  
  foreach my $com (@commands) {
@@ -293,7 +292,7 @@ sub _parseCommand {
  if( $line =~ s/^(G\d+)// ) {
  	 $com = $1;
  }
- 
+
  	# deal with comments specially
  if( defined($com) && ( $com eq 'G04' || $com eq 'G4' ) ) {
  	 if( ! $self->{'gerbObj'}->function('func' => $com, 'comment' => $line ) ) {
@@ -304,17 +303,56 @@ sub _parseCommand {
  }
  
  	# are there characters in the line after the command code?
- if( $line =~ /\w+/ ) {
- 
- 	 	# that better look like a coordinates + op code combination...
- 	 if( $line =~ /^(.+)(D\d+)/ ) {
- 	 	 $coord = $1;
- 	 	 $opcode = $2;
- 	 }
+ if ( $line =~ /\w+/ ) {
+     if ( defined($com) && $line =~ m/^(X[+\-]?\d+)?(Y[+\-]?\d+)?(I[+\-]?\d+)?(J[+\-]?\d+)?(D\d+)?/ ) {
+        my $x = $1;
+        my $y = $2;
+        my $i = $3;
+        my $j = $4;
+        my $opcode = $5;
+
+        my %opts = (
+            'func' => $com,
+        );
+
+        my $coord;
+
+        # Circular interpolation doesn't always contain X/Y/I/J.
+        if ( defined($x) ) {
+            $coord = $x;
+        }
+        if ( defined($y) ) {
+            $coord .= $y;
+        }
+        if ( defined($i) ) {
+            $coord .= $i;
+        }
+        if ( defined($j) ) {
+            $coord .= $j;
+        }
+
+        $opts{'coord'} = $coord;
+
+        # Circular interpolation also leaves off D codes; presumably,
+        # this implies reusing the previous D code.
+        if ( !defined($opcode) ) {
+            $opts{'op'} = $self->{'lastDCode'};
+        }
+        else {
+            $opts{'op'} = $opcode;
+            $self->{'lastDCode'} = $opcode;
+        }
+
+        if ( !$self->{'gerbObj'}->function(%opts) ) {
+            $self->error($self->{'gerbObj'}->error());
+            return undef;
+        }
+     }
  	 elsif( defined($com) && $com eq 'G54' && $line =~ /^D[1-9]\d+/) {
  	 	 # tool select command
 		 $self->_parseAperture($line);
  	 }
+     # 
  	 else {
  	 	 	# otherwise, we don't know what you mean!
  	 	 $self->error("[parse] Invalid instruction following command code $com: $line");
