@@ -192,7 +192,7 @@ sub write {
  my $macros = $gerb->macros();
  
  foreach my $key ( keys(%{ $macros }) ) {
-     my $strings = join("*\n", @{ $macros->{$key} });
+     my $strings = join(",", @{ $macros->{$key} });
      print $wfh '%AM' . $key . "*\n" . $strings . "*%\n";
  }
  

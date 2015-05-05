@@ -230,7 +230,7 @@ sub _parseLine {
  
  
  	 # start of a multi-line parameter	 
- if( $line =~ /^\s*%([^%]+)$/ ) {	 
+ if( $line =~ /^\s*%([^%]+)$/ ) {
  	 $self->{'parseState'}{'startParam'} = $1;
  	 return 1;
  }
@@ -437,11 +437,12 @@ sub _parseParam {
  my $pCode = substr($line, 0, 2, '');
 
 
- if    ($pCode eq 'FS') {$self->_paramFS( $line )}
- elsif ($pCode eq 'MO') {$self->_paramMO( $line )}
- elsif ($pCode eq 'AD') {$self->_paramAD( $line )}
- elsif ($pCode eq 'LP') {$self->_paramLP( $line )}
- elsif ($pCode eq 'SR') {$self->_paramSR( $line )}
+ if    ( $pCode eq 'FS' ) { $self->_paramFS( $line ) }
+ elsif ( $pCode eq 'MO' ) { $self->_paramMO( $line ) }
+ elsif ( $pCode eq 'AD' ) { $self->_paramAD( $line ) }
+ elsif ( $pCode eq 'LP' ) { $self->_paramLP( $line ) }
+ elsif ( $pCode eq 'SR' ) { $self->_paramSR( $line ) }
+ elsif ( $pCode eq 'AM' ) { $self->_paramAM( $line ) }
  else { $self->error( $self->{'gerbObj'}->error() )};
  
  return 1;
@@ -543,6 +544,53 @@ sub _paramAD {
  
  return 1;
  
+}
+
+sub _paramAM
+{
+
+    my $self = shift;
+    my $data = shift;
+
+    my @baseMacroParts = split(/\*/, $data, 3);
+
+    my $macroName = $baseMacroParts[0];
+
+    shift(@baseMacroParts);
+
+    my @allMacroParts;
+    my @validMacroParts;
+
+    # Macros can be squished together on one line, e.g:
+    # 0 EVEN MORE COMMENTS*0 SO MANY COMMENTS*21,1,0.00984,0.01476,0,0,0*'
+    # Thus, we need to split each line, and add it to a master array.
+    foreach my $part ( @baseMacroParts ) {
+        my @parts = split(/\*/, $part);
+
+        push(@allMacroParts, @parts);
+    }
+
+    foreach my $part ( @allMacroParts ) {
+        if ( $part =~ m/^0/ ) {
+            next;
+        }
+        push(@validMacroParts, $part);
+    }
+
+    my $macroDef = join('*', @validMacroParts);
+
+    $macroDef =~ s/\*//g;
+    my @macro = split(/,/, $macroDef);
+
+    my $res = $self->{'gerbObj'}->macro($macroName, \@macro);
+
+    if ( ref($res) eq 'HASH' ) {
+        $self->error("[_paramAM] invalid aperture macro definition: $data");
+        return undef;
+    }
+
+    return 1;
+
 }
 
 sub _paramLP {
