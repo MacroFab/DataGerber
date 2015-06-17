@@ -1,11 +1,11 @@
 #
 # Data::Gerber::Writer 
-# (Derived from Data::Gerber::Parser by C. Church)
 #
 # Parse Gerber RS-247X Formatted Lines
 #
-# (c) 2014 MacroFab, Inc.
-# Author: Dan Calderon 
+# (c) 2015 MacroFab, Inc.
+# Author: Dan Calderon (0.01),
+#         Chris Church (0.2 re-write)
 #================================================
 
 package Data::Gerber::Writer;
@@ -16,51 +16,52 @@ use warnings;
 use Data::Gerber;
 use Data::Dumper;
 
-our $VERSION = "0.01";
+our $VERSION = "0.2";
 
 =head1 NAME
 
 Data::Gerber::Writer
 
-=cut
-
 =head1 SYNOPSIS
 
-	my $gbParse = Data::Gerber::Writer->new();	
-	my    $gerb = $gbWrite->write($data);	
- 	if( ! defined($gerb) ) {
- 		die $gbParse->error();
+    my $gerb = Data::Gerber->new();
+    
+        # create some gerber information in $gerb...
+        
+	my $gbWrite = Data::Gerber::Writer->new();	
+	
+	if( ! $gbWrite->write('/tmp/new.grb', $gerb ) {
+ 		die $gbWrite->error();
  	}
 	
-=cut
 
 =head1 DESCRIPTION
 
- Data::Gerber::Writer writes RS-274X (Gerber) data from a MFGerber Object, checks for validity, and writes the contents to a file.
+ Data::Gerber::Writer generates a new RS-274X (Gerber) output file from a Data::Gerber Object.
  
-=cut
+ 
 
 =head1 METHODS
 
-=cuta
-=item new( OPTS )
+=head2 new( OPTS )
 
- Constructor, creates a new instance of the class.
+Constructor, creates a new instance of the class.
  
- 	my $gbParse = Data::Gerber::Writer->new();
+ 	my $gbWrite = Data::Gerber::Writer->new();
 
- OPTS is a hash with any of the following keys:
+OPTS is a hash with any of the following keys:
  
  	ignoreInvalid => if true value, ignore any invalid or deprecated G-codes, false
  		  	 throws error.  Default = false.	
  	ignoreBlank   => if true value, ignore blank drawing in calculating box size
  			 and drawing bounds
  		  
- for example: 
- 	my $gbParse = Data::Gerber::Writer->new( 'ignoreInvalid' => 1 );	
+for example: 
+ 	my $gbWrite = Data::Gerber::Writer->new( 'ignoreInvalid' => 1 );	
+ 	
 =cut
 
-sub new {									# Create New MFWrite Object
+sub new {									
  my $class = shift;
  my $self = bless({}, $class);
  my %opts = @_;
@@ -80,9 +81,9 @@ sub new {									# Create New MFWrite Object
 }
 
 
-=item error
+=head2 error
 
- Returns the last set error, or undef if no error has been set
+Returns the last set error, or undef if no error has been set
  
 =cut
 
@@ -93,73 +94,144 @@ sub error {
  return $self->{'error'};
 }
 
-=item write(FILE, GERB)
+=head2 write(PATH, GERB)
 
- Write a data FILE from a given MFGerber object GERB
- If an error occurs, the returned value will be undef and the error value will
- be set.  E.g.:
+Create a new Gerber file at location PATH, generating contents from the
+Data::Gerber object GERB.
+
+if PATH is a string, a file is created using that string as the full path to the
+file.  However, if PATH is a file handle, the data is written to that file handle
+instead, and no new file is created. 
+
+Returns true (1) on success, undef and sets the error on error.
  
- 	$gbWrite->write($data);
- 	
- 	if( ! defined($gerb) ) {
- 		die $gbParse->error();
+        # create a new file
+        
+ 	if( ! $gbWrite->write('/tmp/foo.grb', $gerb) ) {
+ 		die $gbWrite->error();
  	}
+ 	
+ 	
+ 	    # write to in-memory file handle (e.g. make a scalar from it)
+ 	
+ 	my($contents, $fh);
+ 	
+ 	open( $fh, '>', \$contents);
+ 	
+ 	if( ! $gbWrite($fh, $gerb) ) { ... }
+ 	
+ 	
+ 	
+ 	    # write to an already opened filehandle
+ 	    
+ 	my $file;
+ 	
+ 	open($file, '>', '/tmp/blah.grb');
+ 	
+ 	if( ! $gbWrite($file, $gerb) ) { ... }
+ 	
  	
 =cut
 
-sub MFwrite {
- my $self = shift; my $file = shift; my $gerb = shift;
+sub write {
+    
+ my $self = shift; 
+ my $file = shift; 
+ my $gerb = shift;
 
- $self->{'error'} = undef;
  if( ! defined($file) ) {
- 	 $self->error("[parse] ERROR: No File Provided");
+ 	 $self->error("[write] ERROR: No File path or handle Provided");
  	 return undef;
  }
- open (MASTER_FILE, ">", $file) || die ("Error in writing" . $file);			# Open Master File
  
- if( length($file) < 1 ) {						
- 	$gerb->error("[parse] ERROR: No File Name Provided for File Mode");		# no file name? dang!
- 	return undef;
- }											#####################
- my $FSzero   = $gerb->{'parameters'}{'FS'}{'zero'}; 
- my $FScoord  = $gerb->{'parameters'}{'FS'}{'coordinates'}; 
- my $FSformat = $gerb->{'parameters'}{'FS'}{'format'} ;
-
- print MASTER_FILE "\%MO" . $gerb->{'parameters'}{'mode'} . "*\%\n"; 			# Print Header Parameters: FS, MO etc.)
- print MASTER_FILE "\%FS".$FSzero.$FScoord."X".$FSformat->{'integer'}. $FSformat->{'decimal'}."Y".$FSformat->{'integer'}.$FSformat->{'decimal'}. "*\%\n";
- foreach my $macrokeys (keys $gerb->{'macros'}) {
-	 print MASTER_FILE "\%AM" . $macrokeys ."*". $gerb->{'macros'}{$macrokeys} . "*\%\n"; 			# Print Header Parameters: FS, MO etc.)	
-#	 print "\%AM". $macrokeys ."*". $gerb->{'macros'}{$macrokeys} . "*\%\n";	
+ if( ! defined($gerb) || ! $gerb->isa('Data::Gerber') ) {
+     $self->error("[write] ERROR: No Data::Gerber object provided");
+     return undef;
  }
-# print MASTER_FILE "\%AM".$FSzero.$FScoord."X".$FSformat->{'integer'}. $FSformat->{'decimal'}."Y".$FSformat->{'integer'}.$FSformat->{'decimal'}. "*\%\n";
-											#####################
- my $master_ap; my $apcount;
+ 
+  
+ my $wfh;
+ my $isFh = 0;
+ 
+ eval { $file->can('write') };
 
- while (($apcount,$master_ap) = each($gerb->{'apertures'})) {				# Print Apertures
- 	print MASTER_FILE "\%AD" . $apcount . $master_ap->{'type'} . ',' . $master_ap->{'modifiers'} . "*\%\n";
- }
-											#####################
- my $master_func; my $fcount; my $f_func; my $f_coord; my $f_op;
+ if( ref($file) eq 'GLOB' && !$@ ) {
+      print STDERR "DBG: Got file handle\n";
 
- while (($fcount,$master_func) = each($gerb->{'functions'})) {				# Print Functions
-	if (exists($master_func->{'aperture'}) && defined($master_func->{'aperture'})){	# For each function in the hash, if aperture, print.
-		print MASTER_FILE $master_func->{'aperture'} . "*\n";
-	}
-	elsif (exists($master_func->{'param'}) && defined($master_func->{'param'})){	# For each function in the hash, if param, print.
- 		print MASTER_FILE "\%" . $master_func->{'param'} . "*\%\n";
-	}
-	else {										# For each function in the hash, if function, print.
-		$f_func = ''; $f_coord = ''; $f_op = '';
-		if (exists($master_func->{'func'})  && defined($master_func->{'func'})) {$f_func  = $master_func->{'func'}};
-		if (exists($master_func->{'coord'}) && defined($master_func->{'coord'})){$f_coord = $master_func->{'coord'}};
-		if (exists($master_func->{'op'})    && defined($master_func->{'op'}))   {$f_op    = $master_func->{'op'}};
-		if ($f_func !~ /G54/) {
- 			print MASTER_FILE $f_func . $f_coord . $f_op . "*\n";
-		}
-	}
+     # this is a file handle of some sort?
+     $wfh  = $file;
+     $isFh = 1;
+
  }
- print MASTER_FILE "M02*\n";
- close (MASTER_FILE);
+ else {
+    print STDERR "DBG: Got file path\n";
+
+     # this is a scalar, let's open a file at that path
+     if( ! open($wfh, '>', $file) ) {
+         $self->error("[write] Cannot open $file for writing -> $!");
+         return undef;
+     }
+
+ }
+ 
+ my   $mode = $gerb->mode();
+ my $format = $gerb->format();
+  	
+    # print format header
+    
+ print $wfh '%FS' . $format->{'zero'} . $format->{'coordinates'};
+ print $wfh 'X' . $format->{'format'}{'integer'} . $format->{'format'}{'decimal'};
+ print $wfh 'Y' . $format->{'format'}{'integer'} . $format->{'format'}{'decimal'};
+ print $wfh "*%\n";
+
+     # print mode header
+ print $wfh '%MO' . $gerb->mode() . "*%\n";
+
+    # write macros
+    
+ my $macros = $gerb->macros();
+ 
+ foreach my $key ( keys(%{ $macros }) ) {
+     my $strings = join(",", @{ $macros->{$key} });
+     print $wfh '%AM' . $key . "*\n" . $strings . "*%\n";
+ }
+ 
+    # write apertures
+    
+ my $apertures = $gerb->apertures();
+ 
+ foreach my $key ( keys(%{ $apertures }) ) {
+     print $wfh '%AD' . $key . $apertures->{$key}{'type'} . ',' . $apertures->{$key}{'modifiers'} . "*%\n";
+ }
+ 
+    # write functions
+    
+ my @functions = $gerb->functions();
+ 
+ foreach (@functions) {
+     if( exists($_->{'aperture'}) && defined($_->{'aperture'}) ) {
+         print $wfh $_->{'aperture'} . "*\n";
+     }
+     elsif( exists($_->{'param'}) && defined($_->{'param'}) ) {
+         print $wfh '%' . $_->{'param'} . "*%\n";
+     }
+     else {
+         my  $func = ( exists($_->{'func'})  && defined($_->{'func'}) )  ? $_->{'func'}  : '';         
+         my $coord = ( exists($_->{'coord'}) && defined($_->{'coord'}) ) ? $_->{'coord'} : '';
+         my    $op = ( exists($_->{'op'})    && defined($_->{'op'}) )    ? $_->{'op'}    : '';
+     
+         print $wfh "${func}${coord}${op}*\n";
+     }
+ }
+ 
+ print $wfh "M02*\n";
+ 
+ if( ! $isFh ) {
+     close ($wfh);
+ }
+ 
+ return 1;
+ 
 }
 
 =head1 AUTHOR

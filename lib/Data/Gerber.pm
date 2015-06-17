@@ -48,7 +48,7 @@ our $VERSION = "0.02";
  referred to as Gerber data) instructions in an object-oriented way, with
  methods and sub-classes for performing common activities such as:
  
-=over 1
+=over 8
 
 =item Parsing Data from Files via L<Gerber::Parser>
 =item Writing Data to Files via L<Gerber::Writer>
@@ -91,9 +91,9 @@ my %gCodes = (
 
 
 
-=item new
+=head2 new
 
- Constructor, creates a new instance of the class.
+Constructor, creates a new instance of the class.
  
  	my $gerb = Gerber->new();
 
@@ -127,6 +127,8 @@ sub new {
  
  $self->{'curAperture'} = undef;
  $self->{'lastMove'}    = 0;
+ $self->{'arcMode'}     = 0; # 0 = not arc (linear), 1 = single, 2 = multi
+ $self->{'arcDir'}      = 1; # 1 = CW, 2 = CCW
  
  	# default to inch mode if not specified
  
@@ -147,9 +149,9 @@ sub new {
 }
 
 
-=item error
+=head2 error
 
- Returns the last set error, or undef if no error has been set
+Returns the last set error, or undef if no error has been set
  
 =cut
 
@@ -161,19 +163,19 @@ sub error {
 }
 
 
-=item ignoreInvalid( FLAG )
+=head2 ignoreInvalid( FLAG )
 
- Set or read the IgnoreInvalid flag.
+Set or read the IgnoreInvalid flag.
  
- When the IgnoreInvalid flag is set to any true value, any invalid or deprecated
- G-Codes or parameters will be ignored. When this flag is set to any false value
- an error will be generated.
+When the IgnoreInvalid flag is set to any true value, any invalid or deprecated
+G-Codes or parameters will be ignored. When this flag is set to any false value
+an error will be generated.
  
- The default flag value is 0, or false.
+The default flag value is 0, or false.
  
- This method sets the flag if a flag argument is provided, or just reads the
- flag if the flag argument is not provided.  This method always returns the
- current flag value, after any set operation.
+This method sets the flag if a flag argument is provided, or just reads the
+flag if the flag argument is not provided.  This method always returns the
+current flag value, after any set operation.
  
 =cut
 
@@ -192,20 +194,20 @@ sub ignoreInvalid {
 }
 
 
-=item ignoreBlank( FLAG )
+=head2 ignoreBlank( FLAG )
 
- Set or read the IgnoreBlank flag.
+Set or read the IgnoreBlank flag.
  
- When the IgnoreBlank flag is set to any true value any drawing by a completely
- closed aperture (commonly used for comments, borders, etc.), after setting the
- flag, will be ignored when calculating the bounding box and size of the 
- drawing area.
+When the IgnoreBlank flag is set to any true value any drawing by a completely
+closed aperture (commonly used for comments, borders, etc.), after setting the
+flag, will be ignored when calculating the bounding box and size of the 
+drawing area.
  
- The default flag value is 0, or false.
+The default flag value is 0, or false.
  
- This method sets the flag if a flag argument is provided, or just reads the
- flag if the flag argument is not provided.  This method always returns the
- current flag value, after any set operation.
+This method sets the flag if a flag argument is provided, or just reads the
+flag if the flag argument is not provided.  This method always returns the
+current flag value, after any set operation.
  
 =cut
 
@@ -223,50 +225,50 @@ sub ignoreBlank {
 }
 
 
-=item aperture( OPTS )
+=head2 aperture( OPTS )
 
- Add or Get a custom aperture, defined by OPTS.
+Add or Get a custom aperture, defined by OPTS.
  
-=over 1
+=over 8
 
 =item Getting an Aperture that Has Been Defined
 
- To get an aperture that has already been defined, provide only the 'code' 
- key in OPTS, specifying the D-Code to retrieve, e.g.:
+To get an aperture that has already been defined, provide only the 'code' 
+key in OPTS, specifying the D-Code to retrieve, e.g.:
  
  	my $apt = $gerb->aperture( 'code' => 'D11' );
  	
- If the specified D-Code is found, a hashref will be returned with the following
- format:
+If the specified D-Code is found, a hashref will be returned with the following
+format:
  
  	{
  	
  	  'code'      => D-code for aperture,
  	  'type'      => Aperture type (built-in or macro name)
  	  'modifiers' => String containing list of modifiers (if set)
- 	  'diameter'    => diameter in format units (circle type only)
+ 	  'diameter'  => diameter in format units (circle type only)
  	  
  	}
 
- If the specified D-Code is not found, an empty hash ref will be returned.
+If the specified D-Code is not found, an empty hash ref will be returned.
  
- If an invalid D-Code is specified, undef will be returned and the error will
- be set.
+If an invalid D-Code is specified, undef will be returned and the error will
+be set.
  
 =item Creating an Aperture Definition
 
- To create an aperture definition, you must provide at a minimum the following 
- keys:
+To create an aperture definition, you must provide at a minimum the following 
+keys:
  
  	code	=> the D-code to use for this aperture
  	type	=> the type of aperture (C, R, O, P or aperture macro name)
  	
- Additionally, you may optionally supply a 'modifiers' key which provides
- any required modifiers.
+Additionally, you may optionally supply a 'modifiers' key which provides
+any required modifiers.
  
- Returns true (1) on success, or undef and sets the error on error.
+Returns true (1) on success, or undef and sets the error on error.
  
- For example:
+For example:
  
  	if( ! $gerb->aperture( 'code' => 'D11', 'type' => 'C', 'modifiers' => 0.0100 ) ) {
  		die $gerb->error();
@@ -280,6 +282,7 @@ sub aperture {
 
  my $self = shift;
  my %opts = @_;
+ 
  
  if( ! exists( $opts{'code'} ) ) {
  	 $self->error("[aperture] CODE Required");
@@ -339,19 +342,46 @@ sub aperture {
 }
 
 
-=item mode( MODE )
+=head2 apertures
 
- Set or get the mode (units) for commands.  The default mode is inches (IN).
+Get All Defined Apertures 
+
+Returns a hashref with the following structure:
+
+    {
+        aperture_code1 => {
+            'type'       => Aperture type code or macro name
+            'modifiers' => string containing list of modifiers,
+            'diameter'   => diameter of circle in 'format' units (circle type only)
+        },
+        aperture_code2 => { ... },
+        aperture_code3 => { ... },
+        ...
+    }
+    
+=cut
+
+sub apertures {
+    
+ my $self = shift;
  
- If MODE is not specified, returns the current mode for the document without
- making any changes.  
- 
- MODE can be one of:
- 
-  IN (inches) or MM (millimeters)
+ return \%{ $self->{'apertures'} }; # shallow copy to prevent outside modification
+}
   
- Returns true (1) if successful, or undef and sets the error if an error
- occurs.
+
+=head2 mode( MODE )
+
+Set or get the mode (units) for commands.  The default mode is inches (IN).
+ 
+If MODE is not specified, returns the current mode for the document without
+making any changes.  
+ 
+MODE can be one of:
+ 
+IN (inches) or MM (millimeters)
+  
+Returns the specified mode if successful, or undef and sets the error if an error
+occurs.
  
  		# set mode
  	if( ! $gerb->mode('MM') ) {
@@ -381,65 +411,85 @@ sub mode {
  return $self->{'parameters'}{'mode'};
 }
 
-=item mode( MODE )
+=head2 macro( MACRO_NAME, MACRO_DEF )
 
- Set or get the mode (units) for commands.  The default mode is inches (IN).
- 
- If MODE is not specified, returns the current mode for the document without
- making any changes.  
- 
- MODE can be one of:
- 
-  IN (inches) or MM (millimeters)
-  
- Returns true (1) if successful, or undef and sets the error if an error
- occurs.
- 
- 		# set mode
- 	if( ! $gerb->mode('MM') ) {
- 		die $gerb->error();
- 	}
- 	
- 		# get mode
- 	my $mode = $gerb->mode();
- 	
- 	
+Set or get an aperture macro definition.
+
+To get an existing macro definition, simply provide the name of the macro
+as MACRO_NAME.  In this form, an arrayref will be returned specifying each
+line of the macro definition or undef if no such definition is found.
+
+To set, or overwrite an existing macro, also provide an arrayref as MACRO_DEF
+with one element per line in the definition.
+
+To set an aperture macro, provide the full macro definition string.
+
+
+e.g.:
+
+    $gerb->macro('FOO', [ "0,1,2,3,4", "5,6,7,8" ] );
+    
+        # returns [  "0,1,2,3,4", "5,6,7,8" ]
+    my $macro = $gerb->macro('FOO');
+
+    
 =cut
 
 sub macro {
 
- my $self = shift;
+ my  $self = shift;
  my $macro = shift;
+ my  $aRef = shift;
 
- my @macrolist = split('\*',$macro);
-
- my $macroname = $macrolist[0];
-# print $macroname."\n";
- my $macromod = $macrolist[1];
-# print $macromod."\n";
- if( defined($macro) ) {
-
-	 $self->{'macros'}{$macroname} = $macromod;
+ if( defined($aRef) && ref($aRef) eq 'ARRAY' ) {
+	 $self->{'macros'}{$macro} = $aRef;
+	 return $self->{'macros'}{$macro};
+ }
+ elsif( defined($macro) ) {
+     return $self->{'macros'}{$macro};
+ }
+ else {
+     return {};
  }
  
- return $self->{'macros'}{$macroname};
 }
 
+=head2 macros
 
-=item format( OPTS )
+Get all set macros
 
- Set or retrieve the Format Specification for this object.
+Returns a hashref with following structure:
+
+    {
+        macroName1 => [ def ],
+        macroName2 => [ def ],
+        ...
+    }
+    
+=cut
+
+sub macros {
  
- B<It is highly recommended to set the Format Specification first, before
- attempting to add commands, as the format has an impact on how certain
- area operations are performed> 
+ my $self = shift;
  
-=over 1
+ return \%{ $self->{'macros'} }; # shallow copy to prevent mod
+    
+}
+
+=head2 format( OPTS )
+
+Set or retrieve the Format Specification for this object.
+ 
+B<It is highly recommended to set the Format Specification first, before
+attempting to add commands, as the format has an impact on how certain
+area operations are performed> 
+ 
+=over 8
 
 =item Retrieve Format Specification
 
- To retrieve the format specification for this Gerber object, call the format
- method with no arguments, which will return the following hash reference:
+To retrieve the format specification for this Gerber object, call the format
+method with no arguments, which will return the following hash reference:
  
  	{
  		'zero'		=> zero truncating setting
@@ -454,19 +504,19 @@ sub macro {
  
 =item Set Format Specification
 
- To set the format specification, pass a set of hash keys and values as the 
- argument to the method. 
+To set the format specification, pass a set of hash keys and values as the 
+argument to the method. 
  
- The following hash keys are supported:
+The following hash keys are supported:
  
-=over 1
+=over 8
 
 =item zero
 
- The zero omission setting, must be one of either L or T. (Representative of
- 'leading' and 'trailing' zero omission.) Any word that begins
- with L or T will function, which can be useful to write more readable code. The
- following are all equivalent:  
+The zero omission setting, must be one of either L or T. (Representative of
+'leading' and 'trailing' zero omission.) Any word that begins
+with L or T will function, which can be useful to write more readable code. The
+following are all equivalent:  
  
  	'zero' => 'L'
  	'zero' => 'Lead'
@@ -474,10 +524,10 @@ sub macro {
  	
 =item coordinates
 
- Which coordinate system to use, must be one of either A or I. (Representative
- of 'absolute' or 'incremental' coordinates.)  Any word that begins with either 
- A or I will function, which can be useful to write more readable code.  The 
- following at all equivalent:
+Which coordinate system to use, must be one of either A or I. (Representative
+of 'absolute' or 'incremental' coordinates.)  Any word that begins with either 
+A or I will function, which can be useful to write more readable code.  The 
+following at all equivalent:
  
  	'coordinates' => 'A'
  	'coordinates' => 'Abs'
@@ -485,38 +535,38 @@ sub macro {
  
 B<DO NOT USE INCREMENTAL COORDINATES>
 
- The use of incremental coordinates is strongly discouraged in the spec, and this
- module does not fully support them. Many features will not work properly with
- incremental coordinates.  Simply put: do not use incremental coordinates.
+The use of incremental coordinates is strongly discouraged in the spec, and this
+module does not fully support them. Many features will not work properly with
+incremental coordinates.  Simply put: do not use incremental coordinates.
  
- Incremental coordinates are not to be confused with modality of coordinates.
- Full coordinate modality, as compliant with the spec, is supported.
+Incremental coordinates are not to be confused with modality of coordinates.
+Full coordinate modality, as compliant with the spec, is supported.
 
 
 =item format
 
- The format of distances and values used in commands.  As the specification
- requires that both X and Y format be the same, this module does not provide
- the ability to distinguish between the two.  
+The format of distances and values used in commands.  As the specification
+requires that both X and Y format be the same, this module does not provide
+the ability to distinguish between the two.  
  
- The format of this entry is a hash reference, with the 'integer' and 
- 'decimal' keys specifying the precision of integers and decimals in all numbers.
- 
- For example:
+The format of this entry is a hash reference, with the 'integer' and 
+'decimal' keys specifying the precision of integers and decimals in all numbers.
+
+For example:
  
  	'format' => {
  		'integer' => 5,
  		'decimal' => 6
  	}
  	
- Note that 7 is the maximum format value.
+Note that 7 is the maximum format value.
  
 =back
 
- Setting the format returns true (1) if successful, or returns undef and sets
- the error message in case of failure.
+Setting the format returns true (1) if successful, or returns undef and sets
+the error message in case of failure.
  
- Example of setting the format specification:
+Example of setting the format specification:
  
 	 if( ! $gerb->format( 'zero' => 'L', 'coordinates' => 'A', 'format' =>
 	     { 'integer' => 5, 'decimal' => 5 } ) ) {
@@ -524,7 +574,7 @@ B<DO NOT USE INCREMENTAL COORDINATES>
 	     die $gerb->error();
 	 }
 
- You may specify any combination of specification values per call.
+You may specify any combination of specification values per call.
  
 =back
 
@@ -537,7 +587,7 @@ sub format {
  my $self = shift;
  my %opts = @_;
  
- return $self->{'parameters'}{'FS'} if( keys(%opts) < 1 );
+ return \%{ $self->{'parameters'}{'FS'} } if( keys(%opts) < 1 );
  
  if( exists( $opts{'zero'} ) ) {
  	 if( $opts{'zero'} =~ /^[lt]/i ) {
@@ -576,51 +626,51 @@ sub format {
 }
 
 
-=item function( OPTS )
+=head2 function( OPTS )
 
- Add a function to the document.
+Add a function to the document.
  
- Standard functions supported:
-=over 1
+Standard functions supported:
+=over 8
 =item Aperture Select
 =item G-Codes
 =item Moves
 =item Repeatable Parameter Calls
 =back
 
- OPTS is a hash that provides one or more of the following keys, which define
- the function:
+OPTS is a hash that provides one or more of the following keys, which define
+the function:
  
-=over 1
+=over 8
 =item aperture
- Select the aperture to use for following functions
+Select the aperture to use for following functions
  
 =item func
- Function Code (i.e. G-Codes)
+Function Code (i.e. G-Codes)
  
 =item coord
- Coordinate Data
+Coordinate Data
  
 =item op
- Operation Code (i.e. D-Code)
+Operation Code (i.e. D-Code)
 
 =item param
- Special parameter which can be repeated multiple times (e.g. LP, SR)
+Special parameter which can be repeated multiple times (e.g. LP, SR)
  
 =item comment
- A comment (used only with G04/G4, if you specify a comment for a non-G04
- command, it may be useful in certain file writers that would automatically
- generate a new comment for you)
+A comment (used only with G04/G4, if you specify a comment for a non-G04
+command, it may be useful in certain file writers that would automatically
+generate a new comment for you)
 
 =back
 
- You can specify any combination which represents a valid function in Gerber
- notation, e.g.: func, coord, and op; coord and op, func; aperture; param
+You can specify any combination which represents a valid function in Gerber
+notation, e.g.: func, coord, and op; coord and op, func; aperture; param
  
- Note that if you specify an aperture or param key, all other keys are ignored.
+Note that if you specify an aperture or param key, all other keys are ignored.
  
- The following are all valid function calls (presuming that you have already
- defined the apertures indicated, etc.):
+The following are all valid function calls (presuming that you have already
+defined the apertures indicated, etc.):
  
  	$gerb->function( 'func' => 'G01', 'coord' => 'X001000Y001000', 'op' => 'D01' );
  	$gerb->function( 'func' => 'G01' );
@@ -628,18 +678,18 @@ sub format {
  	$gerb->function( 'coord' => 'Y-300', 'op' => 'D03' );
  	$gerb->function( 'func' => 'G04', 'comment' => 'My Comment' );
  	
- This method returns true (1) upon success, and undef and sets the error message 
- on error.
+This method returns true (1) upon success, and undef and sets the error message 
+on error.
  
- B<Notes on Sequence>
-=over 1
+B<Notes on Sequence>
+=over 8
 
- This library handles gerber data in a streaming fashion - that is, function
- sequences must be issued in the same order they would be issued in a file, as
- previous functions impact the interpretation of current functions. 
+This library handles gerber data in a streaming fashion - that is, function
+sequences must be issued in the same order they would be issued in a file, as
+previous functions impact the interpretation of current functions. 
  
- All of your aperture, macro, and format specification activities should be
- done before creating functions.
+All of your aperture, macro, and format specification activities should be
+done before creating functions.
 
 =back
 
@@ -657,6 +707,25 @@ sub function {
  	 	 $self->error("[function] Invalid Function Code: $opts{'func'}");
  	 	 return undef;
  	 }
+ 	 
+        # check for interpolation types
+     
+     if( $opts{'func'} =~ /G01|G1/ ) {
+         $self->{'arcDir'} = 0;
+     }
+     if( $opts{'func'} =~ /G02|G2/ ) {
+         $self->{'arcDir'} = 1;
+     }
+     elsif( $opts{'func'} =~ /G03|G3/ ) {
+         $self->{'arcDir'} = 2;
+     }
+     elsif( $opts{'func'} eq 'G74' ) {
+         $self->{'arcMode'} = 1;
+     }
+     elsif( $opts{'func'} eq 'G75' ) {
+         $self->{'arcMode'} = 2;
+     }
+ 	 
  }
  
  if( exists($opts{'op'}) && defined($opts{'op'}) ) {
@@ -667,6 +736,7 @@ sub function {
 		}
  	 }
  }
+ 
  
  
  	# if aperture specified, only allow aperture select in the function
@@ -692,23 +762,24 @@ sub function {
  }
  
  my %func;
-
+ 
  foreach('func', 'coord', 'op', 'comment') {
  	 if( exists( $opts{$_} ) && defined( $opts{$_} ) ) {
  	 	 $func{$_} = $opts{$_};
  	 }
  }
+ 
 
  if( exists($opts{'coord'}) && defined($opts{'coord'}) ) {
  	 
- 	 if( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) {
+ 	 if( ( ! exists($opts{'op'}) || ! defined($opts{'op'}) ) && $opts{'func'} !~ m/G0[23]/ ) {
  	 	 $self->error("[function] Operation Code must be provided when Coordinate Data is provided");
  	 	 return undef;
  	 }
  	
  	 $func{'xy_coords'} = $self->_processCoords($opts{'coord'}, $opts{'op'});
  }
-
+ 
  push(@{ $self->{'functions'} }, \%func);
  
  return 1;
@@ -716,32 +787,33 @@ sub function {
 }
 
 
-=item functions( OPTS )
+=head2 functions( OPTS )
 
- Count number of functions, or retrieve one or more functions.
+Count number of functions, or retrieve one or more functions.
  
- When called with no arguments, this method returns all functions that have
- been added the document.
+When called with no arguments, this method returns all functions that have
+been added the document.
  
- OPTS is a hash with any of the following keys:
-=over 1
+OPTS is a hash with any of the following keys:
+=over 8
 
 =item count
 
- Count number of functions in the document
+Count number of functions in the document
 
 =item num
 
- Retrieve one function, the numth in the document (zero-indexed)
+Retrieve one function, the numth in the document (zero-indexed)
+
 =back
 
- Examples:
+Examples:
  
  	my  $fCount = $gerb->functions( 'count' => 1 );
  	my $3rdFunc = $gerb->functions( 'num' => 2 );
  	my   @funcs = $gerb->functions();
  	
- This method returns undef, and sets the error message if an error occurs.
+This method returns undef, and sets the error message if an error occurs.
  
 
 =cut
@@ -772,23 +844,23 @@ sub functions {
 }
 
 
-=item boundingBox
+=head2 boundingBox
 
- Returns the coordinates of a box which exactly holds the entire contents.
+Returns the coordinates of a box which exactly holds the entire contents.
  
- The result is an array with four elements, representing the Left-most X, Bottom-most
- Y, Right-most X, and Top-Most Y.
+The result is an array with four elements, representing the Left-most X, Bottom-most
+Y, Right-most X, and Top-Most Y.
  
- When considered as tuples of X, Y and corners, the first tuple would represent
- the bottom-left corner, and the second the top-right.
+When considered as tuples of X, Y and corners, the first tuple would represent
+the bottom-left corner, and the second the top-right.
  
- e.g.:
+e.g.:
  
  	my ($lx, $by, $rx, $ty) = $gerb->boundingBox();
  	
  		# ex: 0, 0, 53.7, 123.0056
  	
- All values are floats, in the units specified by the format spec.
+All values are floats, in the units specified by the format spec.
  	
 =cut
 
@@ -805,9 +877,9 @@ sub boundingBox {
 }
 
 
-=item width 
+=head2 width 
 
- Returns the width of the bounding box, in native units as a decimal.
+Returns the width of the bounding box, in native units as a decimal.
  
  	my $width = $gerb->width();
 
@@ -821,9 +893,9 @@ sub width {
  	
 }
 
-=item height 
+=head2 height 
 
- Returns the height of the bounding box, in native units as a decimal.
+Returns the height of the bounding box, in native units as a decimal.
  
  	my $height = $gerb->height();
 
@@ -921,6 +993,7 @@ sub _processCoords {
  my %pos = %{ $sizeRet->[0] };
  my %off = %{ $sizeRet->[1] };
 
+
  	# default to last coordinate value for axis
  	# if not supplied (coordinates are modal)
  foreach('X', 'Y') {
@@ -934,16 +1007,17 @@ sub _processCoords {
  	 }
  }
  
- 	# process offsets
+ 	# process offsets for linear interoplation moves
  	
- if( exists($off{'I'}) && defined($off{'I'}) ) {
- 	 $pos{'X'} += $off{'I'};
+ if( $self->{'arcDir'} == 0 ) {
+     if( exists($off{'I'}) && defined($off{'I'}) ) {
+         $pos{'X'} += $off{'I'};
+     }
+     
+     if( exists($off{'J'}) && defined($off{'J'}) ) {
+         $pos{'Y'} += $off{'J'};
+     }
  }
- 
- if( exists($off{'J'}) && defined($off{'J'}) ) {
- 	 $pos{'Y'} += $off{'J'};
- }
-
  
  
  # TODO: Consider size of aperture or image when calculating the data
@@ -972,8 +1046,16 @@ sub _processCoords {
  	     ( exists($self->{'aperture'}{ $self->{'curAperture'} }{'diameter'} ) &&
  	       $self->{'aperture'}{ $self->{'curAperture'} }{'diameter'} > 0.0 ) ) {
  	
- 	 			# update bounding box coordinates if move with aperture open, or flash
- 	 		$self->_updateCoords(\%pos);
+ 	 			# update bounding box coordinates if move with aperture open
+ 	 			
+ 	 		if( $self->{'arcDir'} == 0 ) {
+ 	 		    $self->_updateCoords(\%pos);
+ 	 		}
+ 	 		else {
+ 	 		       # for arcs, we need the I and J parameters to properly
+ 	 		       # calculate their bounding boxes
+ 	 		    $self->_updateCoords(\%pos, \%off);
+ 	 		}
  	 }
  }
  else {
@@ -992,12 +1074,107 @@ sub _processCoords {
  
 }
 
+
 sub _updateCoords {
 
  my $self = shift;
  my  $pos = shift; # hashref, X,Y coords
+ my  $arc = shift; # for arc moves, I and J may be needed
  
  return if( ! ref($pos) eq 'HASH' || ! exists($pos->{'X'}) || ! exists($pos->{'Y'}) );
+ 
+    # check to see if we're dealing with an arc
+ if( defined($arc) && ref($arc) eq 'HASH' ) {
+     
+        # our start point is our previous final coordinate
+     my $spX = $self->{'lastcoord'}{'X'};
+     my $spY = $self->{'lastcoord'}{'Y'};
+     
+        # our center is provided using I and J params
+        
+     my $cX = $arc->{'I'};
+     my $cY = $arc->{'J'};
+     
+        # Spec 4.4.3.1, etc, center offsets default to 0 if not specified
+     $cX = 0 if( ! defined($cX) );
+     $cY = 0 if( ! defined($cY) );
+     
+        # our end point is the target of the move
+        
+     my $epX = $pos->{'X'};
+     my $epY = $pos->{'Y'};
+     
+        
+     my($dX, $dY, @farpoints);
+
+
+     if( $self->{'arcMode'} == 2 ) {
+         
+                # calculate radius for multi-segment arcs
+
+         $dX = $spX + $cX;
+         $dY = $spY + $cY;
+         
+         if( $spX == $epX && $spY == $epY ) {
+                # 360 degrees, throw in all furthest points
+             push(@farpoints, 
+                 [$spX, $spY], 
+                 [$cX - $dX, $cY],
+                 [$cX, $cY - $dY],
+                 [$cX + $dX, $cY],
+                 [$cX, $cY + $dY]
+             );
+         }
+         else {
+                # not 360 degrees, calculate 4 possible cardinal max points
+                # in addition to start and end points
+             
+             push(@farpoints, [$spX, $spY], [$epX, $epY]);
+             
+             my @targets = ( [ $cX + $dX, $cY + $dY ], 
+                             [ $cX - $dX, $cY + $dY ], 
+                             [ $cX + $dX, $cY - $dY ],
+                             [ $cX - $dX, $cY - $dY ]
+                           );
+             
+             foreach my $i (0..$#targets) {
+                 if( $self->{'arcDir'} == 1 ) {
+                        #clock-wise    
+                    
+                     if( $targets[$i][0] <= $epX && $targets[$i][1] >= $spY ) {
+                         push(@farpoints, $targets[$i]);    
+                     }
+                     elsif( $targets[$i][0] <= $spX && $targets[$i][1] <= $epY ) {
+                         push(@farpoints, $targets[$i]);                         
+                     }
+                    
+                 }
+                 else {
+                        #ccw
+                     if( $targets[$i][0] <= $spX && $targets[$i][1] >= $epY ) {
+                         push(@farpoints, $targets[$i]);
+                     }
+                     elsif( $targets[$i][0] <= $epX && $targets[$i][1] <= $spY ) {
+                         push(@farpoints, $targets[$i]);
+                     }
+                     
+                 }
+             } #end foreach
+         } #end else not 360 degrees
+     }
+     else {
+         #radius for single-segment arc
+         
+            # no arc, start and end are the same, not allowed for single-segment
+         if( $epX == $spX && $epY == $spY ) {
+             return;
+         }
+         
+         # 
+     }
+    
+ }
+ 
  
  if( ! defined($self->{'boundaries'}{'LX'}) ) {
  	 $self->{'boundaries'}{'LX'} = $pos->{'X'};
@@ -1029,371 +1206,266 @@ sub _updateCoords {
  
 }
 
+sub _inchToMM
+{
 
-#############################################
-# New Classes in Version 0.02
+    my $self = shift;
+    my $value = shift;
 
-####### Aperture Conversion: Step 1 subclasses
-
-sub _aperturemodconvert {		#Checks
- my $self = shift;
- my $apt = shift;
- my $master = shift;
-
- my $mod;
- my $modifier;
- my @modarray;
- my $master_mode= $master->{'parameters'}{'mode'};
-
- if ($self->{'apertures'}{$apt}{'type'} eq "C") {
-	$mod = 'diameter';
- 	if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} /25.4;   #Unique to Circle
-	}
- }
- if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-				############ Perform Unit Conversions if MO units don't agree
-					## If Circle, 1 submodifier, 1 optional
-					## If Rectangle or Obround, 2 submodifiers, 1 optional
-					## If Polygon, Dealt with uniquely above
-	$modifier = $self->{'apertures'}{$apt}{'modifiers'};
-	@modarray = split(/X/,$modifier);
-	foreach my $submodifier (@modarray) {
-		$modarray[$submodifier] = $modarray[$submodifier] / 25.4;
-	}
-
-	$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
-
-	$mod = 'modifiers';
- }
- else {				# Do nothing if MO units DO agree
-	$mod = 'modifiers';
- }
- if (! exists($self->{'apertures'}{$apt}{'modifiers'})) {
-				 ######### If it's in the master file, and doesn't need modifiers, : TODO 
-				 ############ Find new D-Code, and add to conversion list TODO	
-				 ############ break out of logic
- }
- return $mod;
-}
-###### Function Conversion: Step 2A subclasses
-sub _FSdecconvert{
-
- my $self = shift;
- my $Var = shift;
- my $Char = shift;
- my $subintlength = shift;			#The original int length
- my $subdeclength = shift;			#The original decimal length
- my $coord;
-
- my $newzero;
- my $decjoiner;
-
- $decjoiner = '12'- (length($Var));
- $newzero = "0"x$decjoiner;
- $coord = $Char . $Var . $newzero;
- return $coord;
-
-}
-###### Function Conversion: Step 2B subclasses
-sub _moCoordconvert{
- my $self = shift;
- my $maxLen = shift;
- my $Varstring = shift;
- my $coordcheck = shift;
- my $Var;
-
- my $coord;
- my $Char = substr($Varstring,0,1);
- $Var = substr($Varstring,1);
-
- $Var = round($Var / (25.4));
- my $Varlength = length($Var);
- if ($Varlength > 2*$maxLen){
-	$self->error("Coordinate too large to format using Gerber");
- }
- my $pre = '';
- $pre = $1 if ($Var =~ s/^([+\-])//);
- $Var = $pre . "0" x (2*$maxLen - $Varlength) . $Var;
- $coord = $Char . $Var;
- return $coord;
-}
-
-
-sub _leadingzeroExtend {
- my $coordvalue = shift;
- my $joiner = shift;
- my $isdec = shift;
-
- my $newzero = "0"x$joiner;
- my $pre = '';
- if ($coordvalue=~/(\-)/){
- 	$pre = $1;
-	$coordvalue =~ tr/-//d;
- }
- if ($isdec == '1') {
-	$coordvalue = $pre.$coordvalue.$newzero;
- }
- elsif ($isdec == '0') {
-	$coordvalue = $pre.$newzero.$coordvalue
- }
-# print $coordvalue."\n";
- return $coordvalue;
-
+    return $value * 25.4;
 
 }
 
+sub _mmToInch
+{
 
+    my $self = shift;
+    my $value = shift;
 
-=item convert( MASTER)
+    return $value * 0.03937;
 
- Convert a function of an Object to a master set of parameters, and add to specified object.
+}
+
+=head2 convert( NEW_OBJECT )
+
+Translate the current gerber object instructions into a new type of gerber object,
+based on format, units, etc.  NEW_OBJECT should be an initialized Data::Gerber
+object, with the format/unit/etc parameters specified. 
+
+After completion, NEW_OBJECT will represent the same functions and parameters as
+the current Gerber object, translated to the new set of formats.
  
- Standard functions supported:
-=over 1
-=item Aperture Select
-=item G-Codes
-=item Moves
-=item Repeatable Parameter Calls
-=back
- Warning: No Support for Aperture Macros!
+Standard functions supported:
 
- MASTER consists of a Gerber object with 'master parameters' pre-specified
+=over 8
+
+=item Aperture Select
+
+=item G-Codes
+
+=item Moves
+
+=item Repeatable Parameter Calls
+
+=back
+
+B<Warning: No Support for Aperture Macros!>
 
 =back
 
 =cut
-sub convert {	
- my $self = shift;
- my $master = shift;
-########## Parse each Gerber Function: If header conversion applies, apply it.
 
-### Variable Initialization
- my $apt; my $Dcount;						#Used for listing Aperture codes D10 - D999; spec supports greater
- my $masterapt; my $master_equivalence_check;
- my $master_mode= $master->{'parameters'}{'mode'};
- my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 6
- my $master_dec = $master->{'parameters'}{'FS'}{'format'}{'decimal'};  #Should be set to 6
- my $s_func;
- my $mod; my $intjoiner; my $decjoiner; my $newzero;
- my $coord; my $xcoord; my $ycoord; my $icoord; my $jcoord;
- my $maxLen = '6';
- my $conversionlist;
- my $SR; my @SRarray;
- 
- if (exists( $master->{'conversionlist'})) { $conversionlist = $master->{'conversionlist'};}
- else {
-	$master->{'conversionlist'} = {};
-	$conversionlist = {};
- }
-###TODO: Insert check to make sure input is correctly formatted gerber object
+sub convert
+{
 
-### Step 1A: Edit Modifiers in the Apertures for each individual Gerber File
+    my $self = shift;
+    my $masterGerber = shift;
 
-#For every aperture,
- foreach $apt (keys %{$self->{'apertures'}}){
-	if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
-							####### If the aperture code exists in the master file:
-		if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
-							######### and If the aperture type is the same:
-			$mod = $self->_aperturemodconvert($apt,$master);
-							########### Define the $mod: Circle, Modifier, or doesn't need $mod
-			$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
-			foreach $masterapt (keys %{$master->{'apertures'}}) {
-				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
-					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
-						########### If it's in the master file, is a $mod, and the $mod is EQUAL 
-						########### to ANY master aperture already defined:
-						$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
-						$conversionlist->{$apt} = $masterapt;
-						$master_equivalence_check = '1';
-						last;############# Exit for loop
-					}
-				}
-			}
-			if ($master_equivalence_check == 0) {
-				foreach $Dcount (10..1000) {
-					if ((! exists($master->{'apertures'}{"D".$Dcount})) && (! exists($self->{'apertures'}{"D".$Dcount}))) {
-						########### If it's in the master file, is a $mod, and the $mod is 
-						########### NOT EQUAL to ANY master aperture already defined:
-						$master->{'apertures'}{'D'.$Dcount} = $self->{'apertures'}{$apt};
-						$conversionlist->{$apt} = 'D'.$Dcount;
-						last;
-						############ Find new D-Code, convert, and add to conversion list		
-					}
-				}
-			}
-		}
-		else {				######### If the aperture type is NOT the same:
+    if ( !defined($masterGerber) || !$masterGerber->isa('Data::Gerber') ) {
+        $self->error('[convert] master Gerber was not provided or was not a Data::Gerber object.');
+        return undef;
+    }
 
-			foreach $Dcount (10..1000) {
-				if (! exists($master->{'apertures'}{"D".$Dcount}) && ! exists($self->{'apertures'}{"D".$Dcount})) {
-					$master->{'apertures'}{'D'.$Dcount} = $self->{'apertures'}{$apt};
-					$conversionlist->{$apt} = "D".$Dcount;
-					last;
-						############ Find new D-Code, convert TODO, and add to conversion list		
-				}
-			}
-		}
-	}
-	else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
-		$mod = $self->_aperturemodconvert($apt,$master);
-		foreach $masterapt (keys %{$master->{'apertures'}}) {
-			if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
-				if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
-						######### If it's NOT in the master file, is a $type, and the $type's $mod is 
-						######### EQUAL to ANY master aperture already defined:
-					$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
-					$conversionlist->{$apt} = $masterapt;
-						###########Force the current aperture to be equal to the master, and add to conversionlist
-				}
-			}
-		}				
-		if (! exists($conversionlist->{$apt})) {
-					######### If none of the aperture values in the master equal the current apertures, add to master
-			$master->{'apertures'}{$apt} = $self->{'apertures'}{$apt};
-		}			
-	}
+    if ( lc($masterGerber->mode()) eq lc($self->mode()) ) {
+        # No work to do.
+        return 1;
+    }
 
- } 
-# For every Function
- foreach $s_func (keys $self->{'functions'}) {
- 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-							### Step 2A: Add back dropped zeroes from original Gerb, if needed
-		my $coord = $self->{'functions'}[$s_func]{'coord'} ;
-		my $formatlength = $self->{'parameters'}{'FS'}{'format'}{'integer'}+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
-		my $testvalue;
- 		my $joiner; 
-		my @coordsplit = split(/([X|Y|I|J])/,$coord);
-		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
-		my $currentChar;
-		foreach my $coordvalue (@coordsplit) {
-			$testvalue = $coordvalue;
-			$testvalue =~ tr/[+\-]//d;
-			if ($coordvalue =~ m/([XYIJ])/i) {
-				$currentChar = $1;
-			}
-			elsif ((length($testvalue)<$formatlength) && ! ($coordvalue =~ /X|Y|I|J/i)) {
- 				$joiner = $formatlength - length($testvalue);
-				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					$coordvalue = _leadingzeroExtend($coordvalue,$joiner,'0');
-				}
-			}
-		}
-		my $tempcoord = join('',@coordsplit);
-		@coordsplit = split(/([X|Y|I|J])/,$tempcoord);
-		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
-							### Step 2B: Add back Leading Zeros
-		if ($self->{'parameters'}{'FS'}{'format'}{'integer'} ne $maxLen) {
-			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
-#TODO
-				$intjoiner = $maxLen+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
+    my $masterMode = $masterGerber->mode();
+    my $masterFormat = $masterGerber->format();
 
-				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					foreach my $intvalue (@coordsplit) {
-						$testvalue = $intvalue;
-						$testvalue =~ tr/[+\-]//d;
-						if ($intvalue =~ m/([XYIJ])/i) {
-							$currentChar = $1;
-						}
-						elsif ((length($testvalue)<$intjoiner) && ! ($intvalue =~ /X|Y|I|J/i)) {
- 							$joiner = $intjoiner- length($testvalue);
-							$intvalue = _leadingzeroExtend($intvalue,$joiner,'0');
-						}
-					}
+    # Convert apertures.
+    foreach my $aperture ( keys(%{ $self->{'apertures'} }) ) {
+        $self->_convertAperture($aperture, $masterMode);
+    }
 
-				}
-#				print "Integer Format Converted" . "\n";
-			}
-		}
-		$tempcoord = join('',@coordsplit);
-		@coordsplit = split(/([X|Y|I|J])/,$tempcoord);
-		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
-							### Step 2C: Add back Trailing Zeros
-		if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} ne $maxLen) {
-			if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} < $maxLen) {
-				$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
-				$decjoiner = 2*$maxLen;
-				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					foreach my $decvalue (@coordsplit) {
-						$testvalue = $decvalue;
-						$testvalue =~ tr/[+\-]//d;
-						if ($decvalue =~ m/([XYIJ])/i) {
-							$currentChar = $1;
-						}
-						elsif ((length($testvalue)<$decjoiner) && !($decvalue =~ /X|Y|I|J/i)) {
- 							$joiner = $decjoiner- length($testvalue);
-							$decvalue = _leadingzeroExtend($decvalue,$joiner,'1');
-						}
-					}
-				}
-				else {
-	#				if ($coord =~ s/.*X([0-9]+)/$1/){ $xcoord = $self->_FSdecconvert($1,"X",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-	#				if ($coord =~ s/.*Y([0-9]+)/$1/){ $ycoord = $self->_FSdecconvert($1,"Y",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-	#				if ($coord =~ s/.*I([0-9]+)/$1/){ $icoord = $self->_FSdecconvert($1,"I",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-	#				if ($coord =~ s/.*J([0-9]+)/$1/){ $jcoord = $self->_FSdecconvert($1,"J",$self->{'parameters'}{'FS'}{'format'}{'integer'},$self->{'parameters'}{'FS'}{'format'}{'decimal'} )};
-					$coord = $xcoord . $ycoord . $icoord . $jcoord;
-				}
-#				print "Decimal Format Converted" . "\n";
-			}
-		}
-		$coord = join('',@coordsplit);
-		$self->{'functions'}[$s_func]{'coord'} = $coord ;
-	}
- }
- foreach $s_func (keys $self->{'functions'}) {		### Step 2B: Convert MM to IN (if needed)
- 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-		if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-			$coord = $self->{'functions'}[$s_func]{'coord'};
+    # Convert functions.
+    for ( my $index = 0; $index < scalar(@{ $self->{'functions'} }); ++$index ) {
+        $self->_convertFunction($index, $masterMode, $masterFormat);
+    }
 
-			$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
+# G70
+# G71
+   
 
-			if ($coord =~ m/X[0-9]+/){ $xcoord = $self->_moCoordconvert($maxLen,$&)};
-			if ($coord =~ m/Y[0-9]+/){ $ycoord = $self->_moCoordconvert($maxLen,$&)};
-			if ($coord =~ m/I[0-9]+/){ $icoord = $self->_moCoordconvert($maxLen,$&)};
-			if ($coord =~ m/J[0-9]+/){ $jcoord = $self->_moCoordconvert($maxLen,$&)};
-			$self->{'functions'}[$s_func]{'coord'} = $xcoord . $ycoord . $icoord . $jcoord;
-		}
- 	}
- }
- foreach $s_func (keys $self->{'functions'}) {		### Step 2C: Edit Function Codes for each individual Gerber File from conversionlist
-							#	For each function in the hash, if the function contains coordinates, 
-							#process those coordinates in order to update the MO values. Otherwise, ignore it.
-	if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
- 		$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
-	}
-							#	For each function in the hash, if the function is an aperture 
-							# listed in the conversionlist, convert it. Otherwise, ignore it.
-	if (exists($self->{'functions'}[$s_func]{'aperture'}) && defined($self->{'functions'}[$s_func]{'aperture'})){
-		if (exists($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}}) && defined($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}} )) {
-			$self->{'functions'}[$s_func]{'aperture'} = $conversionlist->{$self->{'functions'}[$s_func]{'aperture'}};
-		}
-	}
-							#      For each function in the hash, if the function is an SR parameter call, 
-							# and the units of MO don't agree with master, Convert. Otherwise, ignore it.
-	if (exists($self->{'functions'}[$s_func]{'param'}) && defined($self->{'functions'}[$s_func]{'param'})){
-		if ($self->{'functions'}[$s_func]{'param'} =~ m/^SR.*/) {
-			if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-				@SRarray = split(/(I|J)/,$self->{'functions'}[$s_func]{'param'});
-				splice @SRarray, 0, 1;
-				foreach my $submodifier (@SRarray) {
-					if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
-						$SRarray[$submodifier] = $SRarray[$submodifier] / 25.4;
-					}
-				}
-				$self->{'functions'}[$s_func]{'param'} = join('',@SRarray);
-			}
-		}
-	}
- }
-### Step 3: Make final Format changes, and Append Entire Functions Object to Master
- $master->{'conversionlist'} = $conversionlist;
- $self->{'parameters'}{'FS'}{'format'}{'integer'} = $master_int;
- $self->{'parameters'}{'FS'}{'format'}{'decimal'} = $master_dec;
- $self->{'parameters'}{'mode'} = $master_mode;
+    # Convert format specification.
+    $self->format('format' => { 'integer' => $masterFormat->{'format'}->{'integer'},
+                                'decimal' => $masterFormat->{'format'}->{'decimal'} },
+                  'zero' => $masterFormat->{'zero'},
+                  'coordinates' => $masterFormat->{'coordinates'});
+    $self->mode($masterMode);
+
 }
 
-###################################################
+sub _convertAperture
+{
+
+    my $self = shift;
+    my $aperture = shift;
+    my $mode = shift;
+
+    if ( lc($self->mode()) eq lc($mode) ) {
+        # No work to do.
+        return;
+    }
+
+    if ( $self->{'apertures'}{$aperture}{'type'} eq 'C' ) {
+        my $diameter = $self->{'apertures'}{$aperture}{'diameter'};
+
+        if ( lc($self->mode()) eq 'mm' ) {
+            $self->{'apertures'}{$aperture}{'diameter'} = $self->_mmToInch($diameter);
+        }
+        else {
+            $self->{'apertures'}{$aperture}{'diameter'} = $self->_inchToMM($diameter);
+        }
+    }
+
+    my $modifiers = $self->{'apertures'}{$aperture}{'modifiers'};
+    my @modifiers = split(/X/, $modifiers);
+    my @convertedModifiers;
+
+    foreach my $modifier ( @modifiers ) {
+        my $convertedModifier;
+
+        if ( lc($self->mode()) eq 'mm' ) {
+            $convertedModifier = $self->_mmToInch($modifier);
+        }
+        else {
+            $convertedModifier = $self->_inchToMM($modifier);
+        }
+
+        push(@convertedModifiers, $convertedModifier);
+    }
+
+    $self->{'apertures'}{$aperture}{'modifiers'} = join('X', @convertedModifiers);
+
+    return 1;
+
+}
+
+sub _convertFunction
+{
+
+    my $self = shift;
+    my $index = shift;
+    my $masterMode = shift;
+    my $masterFormat = shift;
+
+    my $function = $self->{'functions'}[$index];
+
+    if ( lc($self->mode()) eq $masterMode ||
+         !exists($function->{'coord'}) || 
+         !defined($function->{'coord'}) )
+    {
+        # If this is G71 or G70, remove it. We don't want these codes interfering
+        # with the master conversion setting.
+
+        if ( exists($function->{'func'}) && 
+             defined($function->{'func'}) &&
+             $function->{'func'} =~ m/G71|G70/ )
+        {
+            splice(@{ $self->{'functions'} }, $index, 1);
+        }
+
+        return;
+    }
+
+    my $masterFormatLength = $masterFormat->{'format'}->{'decimal'} + $masterFormat->{'format'}->{'integer'};
+    my $masterLeadingZeros = ( $masterFormat->{'zero'} eq 'L' ) ? 1 : 0;
+
+    my $coord = $function->{'coord'};
+    my @coordinates = split(/([X|Y|I|J])/, $coord);
+
+    # Pop the delimiter off of the array, as we don't need it.
+    shift(@coordinates);
+
+    my $axis;
+    my $sign;
+    my %axes = ( 'X' => undef, 'Y' => undef, 'I' => undef, 'J' => undef );
+    my $wholeDigits = $self->format()->{'format'}->{'integer'};
+    my $precisionDigits = $self->format()->{'format'}->{'decimal'};
+
+    foreach my $coordinate ( @coordinates ) {
+
+        my $tempCoordinate = $coordinate;
+
+        if ( $tempCoordinate =~ m/([+\-])/ ) {
+            $sign = $1;
+        }
+
+        $tempCoordinate =~ tr/+-//d;
+
+        if ( $tempCoordinate =~ m/([XYIJ])/i ) {
+            $axis = $1;
+            next;
+        }
+
+        my $precisionPart = substr($tempCoordinate, -$precisionDigits);
+        my $wholePart = substr($tempCoordinate, 0, length($tempCoordinate) - $precisionDigits);
+
+        my $value = "$wholePart.$precisionPart" + 0;
+
+        # Metric/imperial conversion.
+        if ( lc($masterMode) eq 'mm' ) {
+            $value = $self->_inchToMM($value);
+        }
+        else {
+            $value = $self->_mmToInch($value);
+        }
+
+        my @parts = split(/\./, "$value");
+
+        if ( length($parts[0]) > $masterFormat->{'format'}->{'integer'} ) {
+            $self->error('[_convertFunction] integer length exceeded format specification.');
+            return undef;
+        }
+
+        if ( $masterLeadingZeros ) {
+            my $decimalLength = length($parts[1]);
+
+            if ( $decimalLength > $masterFormat->{'format'}->{'decimal'} ) {
+                $parts[1] = substr($parts[1], 0, $masterFormat->{'format'}->{'decimal'});
+            }
+            else {
+                my $padLength = $masterFormat->{'format'}->{'decimal'} - $decimalLength;
+
+                if ( $padLength ) {
+                    $parts[1] = sprintf("%s%0*d", $parts[1], $padLength, 0);
+                }
+            }
+        }
+        else {
+            # Handle trailing zeros.
+        }
+
+        $value = $parts[0] . $parts[1];
+
+        if ( defined($sign) ) {
+            $value = $sign . $value;
+        }
+
+        $axes{$axis} = $value;
+
+        $axis = undef;
+        $sign = undef;
+    }
+
+    my @convertedCoordinates;
+
+    foreach my $key ( keys(%axes) ) {
+        if ( !defined($axes{$key}) ) {
+            next;
+        }
+
+        push(@convertedCoordinates, $key);
+        push(@convertedCoordinates, $axes{$key});
+    }
+
+    $self->{'functions'}[$index]{'coord'} = join('', @convertedCoordinates);
+    $self->{'functions'}[$index]{'xy_coords'} = $self->_processCoords($function->{'coord'},
+                                                                      $function->{'op'});
+    
+}
 
 sub translate {
 
@@ -1403,17 +1475,12 @@ sub translate {
  $TransCoord[0] = shift;
  $TransCoord[1] = shift;
 
- my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
-
-
-# $TransCoord[0] = sprintf("%f", $TransCoord[0]);
-
+    # CC - TODO - Why is this here?
+    
+ my $fDiv = 10 ** 3; 
+ 
  $TransCoord[0] *= $fDiv;
-
-# $TransCoord[1] = sprintf("%f", $TransCoord[1]);
  $TransCoord[1] *= $fDiv;
-
-# print "Translate".Dumper(@TransCoord)."\n";
 
  my @XYCoord;
  my %XYCoord;
@@ -1450,9 +1517,6 @@ sub translate {
 		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
 			if (exists($self->{'functions'}[$s_func]{'op'}) && defined($self->{'functions'}[$s_func]{'op'})){
 				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
-#			my $pos = {'X'=>$self->{'functions'}[$s_func]{'xy_coords'}[0], 
-#				   'Y'=>$self->{'functions'}[$s_func]{'xy_coords'}[1]};
-#			$self->_updateCoords($pos);
 			}
 		}
 	}

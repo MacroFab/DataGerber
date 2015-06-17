@@ -86,7 +86,7 @@ sub new {
  
  
  if( exists($opts{'ignoreInvalid'}) && defined($opts{'ignoreInvalid'}) ) {
- 	$self->{'ignore'} = $opts{'ignore'};
+ 	$self->{'ignore'} = $opts{'ignoreInvalid'};
  }
 
  if( exists($opts{'ignoreBlank'}) && defined($opts{'ignoreBlank'}) ) {
@@ -230,7 +230,7 @@ sub _parseLine {
  
  
  	 # start of a multi-line parameter	 
- if( $line =~ /^\s*%([^%]+)$/ ) {	 
+ if( $line =~ /^\s*%([^%]+)$/ ) {
  	 $self->{'parseState'}{'startParam'} = $1;
  	 return 1;
  }
@@ -244,7 +244,6 @@ sub _parseLine {
  }
  
  	# can have multiple commands on one line
- 
  my @commands = split(/\*/, $line);
  
  foreach my $com (@commands) {
@@ -293,7 +292,7 @@ sub _parseCommand {
  if( $line =~ s/^(G\d+)// ) {
  	 $com = $1;
  }
- 
+
  	# deal with comments specially
  if( defined($com) && ( $com eq 'G04' || $com eq 'G4' ) ) {
  	 if( ! $self->{'gerbObj'}->function('func' => $com, 'comment' => $line ) ) {
@@ -304,16 +303,54 @@ sub _parseCommand {
  }
  
  	# are there characters in the line after the command code?
- if( $line =~ /\w+/ ) {
- 
- 	 	# that better look like a coordinates + op code combination...
- 	 if( $line =~ /^(.+)(D\d+)/ ) {
- 	 	 $coord = $1;
- 	 	 $opcode = $2;
- 	 }
+ if ( $line =~ /\w+/ ) {
+     if ( defined($com) && $line =~ m/^(X[+\-]?\d+)?(Y[+\-]?\d+)?(I[+\-]?\d+)?(J[+\-]?\d+)?(D\d+)?/ ) {
+        my $x = $1;
+        my $y = $2;
+        my $i = $3;
+        my $j = $4;
+        my $opcode = $5;
+
+        my %opts = (
+            'func' => $com,
+        );
+
+        my $coord;
+
+        # Circular interpolation doesn't always contain X/Y/I/J.
+        if ( defined($x) ) {
+            $coord = $x;
+        }
+        if ( defined($y) ) {
+            $coord .= $y;
+        }
+        if ( defined($i) ) {
+            $coord .= $i;
+        }
+        if ( defined($j) ) {
+            $coord .= $j;
+        }
+
+        $opts{'coord'} = $coord;
+
+        # Circular interpolation also leaves off D codes; presumably,
+        # this implies reusing the previous D code.
+        if ( !defined($opcode) ) {
+            $opts{'op'} = $self->{'lastDCode'};
+        }
+        else {
+            $opts{'op'} = $opcode;
+            $self->{'lastDCode'} = $opcode;
+        }
+
+        if ( !$self->{'gerbObj'}->function(%opts) ) {
+            $self->error($self->{'gerbObj'}->error());
+            return undef;
+        }
+     }
  	 elsif( defined($com) && $com eq 'G54' && $line =~ /^D[1-9]\d+/) {
- 	 	 # tool select command
-		 $self->_parseAperture($line);
+         # Deprecated; ignore G54.
+		 # $self->_parseAperture($line);
  	 }
  	 else {
  	 	 	# otherwise, we don't know what you mean!
@@ -399,11 +436,12 @@ sub _parseParam {
  my $pCode = substr($line, 0, 2, '');
 
 
- if    ($pCode eq 'FS') {$self->_paramFS( $line )}
- elsif ($pCode eq 'MO') {$self->_paramMO( $line )}
- elsif ($pCode eq 'AD') {$self->_paramAD( $line )}
- elsif ($pCode eq 'LP') {$self->_paramLP( $line )}
- elsif ($pCode eq 'SR') {$self->_paramSR( $line )}
+ if    ( $pCode eq 'FS' ) { $self->_paramFS( $line ) }
+ elsif ( $pCode eq 'MO' ) { $self->_paramMO( $line ) }
+ elsif ( $pCode eq 'AD' ) { $self->_paramAD( $line ) }
+ elsif ( $pCode eq 'LP' ) { $self->_paramLP( $line ) }
+ elsif ( $pCode eq 'SR' ) { $self->_paramSR( $line ) }
+ elsif ( $pCode eq 'AM' ) { $self->_paramAM( $line ) }
  else { $self->error( $self->{'gerbObj'}->error() )};
  
  return 1;
@@ -491,6 +529,12 @@ sub _paramAD {
  	
  	if( $mod =~ /,(.*)$/ ) {
  		$mod = $1;
+
+        # Aperture definitions with a size of zero cause issues with processing,
+        # so coerce them to a small value.
+        if ( $mod == 0 ) {
+            $mod = 0.0001;
+        }
  	}
  	
  	if( ! $self->{'gerbObj'}->aperture( 'code' => "D$aper", 'type' => $type, 'modifiers' => $mod ) ) {
@@ -505,6 +549,53 @@ sub _paramAD {
  
  return 1;
  
+}
+
+sub _paramAM
+{
+
+    my $self = shift;
+    my $data = shift;
+
+    my @baseMacroParts = split(/\*/, $data, 3);
+
+    my $macroName = $baseMacroParts[0];
+
+    shift(@baseMacroParts);
+
+    my @allMacroParts;
+    my @validMacroParts;
+
+    # Macros can be squished together on one line, e.g:
+    # 0 EVEN MORE COMMENTS*0 SO MANY COMMENTS*21,1,0.00984,0.01476,0,0,0*'
+    # Thus, we need to split each line, and add it to a master array.
+    foreach my $part ( @baseMacroParts ) {
+        my @parts = split(/\*/, $part);
+
+        push(@allMacroParts, @parts);
+    }
+
+    foreach my $part ( @allMacroParts ) {
+        if ( $part =~ m/^0/ ) {
+            next;
+        }
+        push(@validMacroParts, $part);
+    }
+
+    my $macroDef = join('*', @validMacroParts);
+
+    $macroDef =~ s/\*//g;
+    my @macro = split(/,/, $macroDef);
+
+    my $res = $self->{'gerbObj'}->macro($macroName, \@macro);
+
+    if ( ref($res) eq 'HASH' ) {
+        $self->error("[_paramAM] invalid aperture macro definition: $data");
+        return undef;
+    }
+
+    return 1;
+
 }
 
 sub _paramLP {
