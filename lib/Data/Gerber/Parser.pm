@@ -349,10 +349,9 @@ sub _parseCommand {
         }
      }
  	 elsif( defined($com) && $com eq 'G54' && $line =~ /^D[1-9]\d+/) {
- 	 	 # tool select command
-		 $self->_parseAperture($line);
+         # Deprecated; ignore G54.
+		 # $self->_parseAperture($line);
  	 }
-     # 
  	 else {
  	 	 	# otherwise, we don't know what you mean!
  	 	 $self->error("[parse] Invalid instruction following command code $com: $line");
@@ -530,6 +529,12 @@ sub _paramAD {
  	
  	if( $mod =~ /,(.*)$/ ) {
  		$mod = $1;
+
+        # Aperture definitions with a size of zero cause issues with processing,
+        # so coerce them to a small value.
+        if ( $mod == 0 ) {
+            $mod = 0.0001;
+        }
  	}
  	
  	if( ! $self->{'gerbObj'}->aperture( 'code' => "D$aper", 'type' => $type, 'modifiers' => $mod ) ) {

@@ -1206,121 +1206,25 @@ sub _updateCoords {
  
 }
 
+sub _inchToMM
+{
 
-#############################################
-# New Classes in Version 0.02
+    my $self = shift;
+    my $value = shift;
 
-####### Aperture Conversion: Step 1 subclasses
-
-sub _aperturemodconvert {		#Checks
- my $self = shift;
- my $apt = shift;
- my $master = shift;
-
- my $mod;
- my $modifier;
- my @modarray;
- my $master_mode= $master->{'parameters'}{'mode'};
-
- if ($self->{'apertures'}{$apt}{'type'} eq "C") {
-	$mod = 'diameter';
- 	if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-		$self->{'apertures'}{$apt}{'diameter'} = $self->{'apertures'}{$apt}{'diameter'} /25.4;   #Unique to Circle
-	}
- }
- if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-				############ Perform Unit Conversions if MO units don't agree
-					## If Circle, 1 submodifier, 1 optional
-					## If Rectangle or Obround, 2 submodifiers, 1 optional
-					## If Polygon, Dealt with uniquely above
-	$modifier = $self->{'apertures'}{$apt}{'modifiers'};
-	@modarray = split(/X/,$modifier);
-	foreach my $submodifier (@modarray) {
-		$modarray[$submodifier] = $modarray[$submodifier] / 25.4;
-	}
-
-	$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
-
-	$mod = 'modifiers';
- }
- else {				# Do nothing if MO units DO agree
-	$mod = 'modifiers';
- }
- if (! exists($self->{'apertures'}{$apt}{'modifiers'})) {
-				 ######### If it's in the master file, and doesn't need modifiers, : TODO 
-				 ############ Find new D-Code, and add to conversion list TODO	
-				 ############ break out of logic
- }
- return $mod;
-}
-###### Function Conversion: Step 2A subclasses
-sub _FSdecconvert{
-
- my $self = shift;
- my $Var = shift;
- my $Char = shift;
- my $subintlength = shift;			#The original int length
- my $subdeclength = shift;			#The original decimal length
- my $coord;
-
- my $newzero;
- my $decjoiner;
-
- $decjoiner = '12'- (length($Var));
- $newzero = "0"x$decjoiner;
- $coord = $Char . $Var . $newzero;
- return $coord;
-
-}
-###### Function Conversion: Step 2B subclasses
-sub _moCoordconvert{
- my $self = shift;
- my $maxLen = shift;
- my $Varstring = shift;
- my $coordcheck = shift;
- my $Var;
-
- my $coord;
- my $Char = substr($Varstring,0,1);
- $Var = substr($Varstring,1);
-
- $Var = round($Var / (25.4));
- my $Varlength = length($Var);
- if ($Varlength > 2*$maxLen){
-	$self->error("Coordinate too large to format using Gerber");
- }
- my $pre = '';
- $pre = $1 if ($Var =~ s/^([+\-])//);
- $Var = $pre . "0" x (2*$maxLen - $Varlength) . $Var;
- $coord = $Char . $Var;
- return $coord;
-}
-
-
-sub _leadingzeroExtend {
- my $coordvalue = shift;
- my $joiner = shift;
- my $isdec = shift;
-
- my $newzero = "0"x$joiner;
- my $pre = '';
- if ($coordvalue=~/(\-)/){
- 	$pre = $1;
-	$coordvalue =~ tr/-//d;
- }
- if ($isdec == '1') {
-	$coordvalue = $pre.$coordvalue.$newzero;
- }
- elsif ($isdec == '0') {
-	$coordvalue = $pre.$newzero.$coordvalue
- }
-# print $coordvalue."\n";
- return $coordvalue;
-
+    return $value * 25.4;
 
 }
 
+sub _mmToInch
+{
 
+    my $self = shift;
+    my $value = shift;
+
+    return $value * 0.03937;
+
+}
 
 =head2 convert( NEW_OBJECT )
 
@@ -1330,7 +1234,6 @@ object, with the format/unit/etc parameters specified.
 
 After completion, NEW_OBJECT will represent the same functions and parameters as
 the current Gerber object, translated to the new set of formats.
-
  
 Standard functions supported:
 
@@ -1351,236 +1254,218 @@ B<Warning: No Support for Aperture Macros!>
 =back
 
 =cut
-sub convert {	
-    
- my $self = shift;
- my $master = shift;
- 
-########## Parse each Gerber Function: If header conversion applies, apply it.
 
-# CC - TODO - Stop reaching down into the private variables of other objects!
-#             Just because you can, doesn't mean you should!
+sub convert
+{
 
-### Variable Initialization
- my $apt; my $Dcount;						#Used for listing Aperture codes D10 - D999; spec supports greater
- my $masterapt; my $master_equivalence_check;
- my $master_mode= $master->{'parameters'}{'mode'};
- my $master_int = $master->{'parameters'}{'FS'}{'format'}{'integer'};  #Should be set to 6
- my $master_dec = $master->{'parameters'}{'FS'}{'format'}{'decimal'};  #Should be set to 6
- my $s_func;
- my $mod; my $intjoiner; my $decjoiner; my $newzero;
- my $coord; my $xcoord; my $ycoord; my $icoord; my $jcoord;
- my $maxLen = '6';
- my $conversionlist;
- my $SR; my @SRarray;
- 
- if (exists( $master->{'conversionlist'})) { $conversionlist = $master->{'conversionlist'};}
- else {
-	$master->{'conversionlist'} = {};
-	$conversionlist = {};
- }
-###TODO: Insert check to make sure input is correctly formatted gerber object
+    my $self = shift;
+    my $masterGerber = shift;
 
-### Step 1A: Edit Modifiers in the Apertures for each individual Gerber File
+    if ( !defined($masterGerber) || !$masterGerber->isa('Data::Gerber') ) {
+        $self->error('[convert] master Gerber was not provided or was not a Data::Gerber object.');
+        return undef;
+    }
 
-#For every aperture,
- foreach $apt (keys %{$self->{'apertures'}}){
-	if (exists($master->{'apertures'}{$apt}) && defined($master->{'apertures'}{$apt})){
-							####### If the aperture code exists in the master file:
-		if ($self->{'apertures'}{$apt}->{'type'} eq $master->{'apertures'}{$apt}{'type'}) {
-							######### and If the aperture type is the same:
-			$mod = $self->_aperturemodconvert($apt,$master);
-							########### Define the $mod: Circle, Modifier, or doesn't need $mod
-			$master_equivalence_check = '0';	#reset master_equivalence before entering foreach loop
-			foreach $masterapt (keys %{$master->{'apertures'}}) {
-				if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
-					if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
-						########### If it's in the master file, is a $mod, and the $mod is EQUAL 
-						########### to ANY master aperture already defined:
-						$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
-						$conversionlist->{$apt} = $masterapt;
-						$master_equivalence_check = '1';
-						last;############# Exit for loop
-					}
-				}
-			}
-			if ($master_equivalence_check == 0) {
-				foreach $Dcount (10..1000) {
-					if ((! exists($master->{'apertures'}{"D".$Dcount})) && (! exists($self->{'apertures'}{"D".$Dcount}))) {
-						########### If it's in the master file, is a $mod, and the $mod is 
-						########### NOT EQUAL to ANY master aperture already defined:
-						$master->{'apertures'}{'D'.$Dcount} = $self->{'apertures'}{$apt};
-						$conversionlist->{$apt} = 'D'.$Dcount;
-						last;
-						############ Find new D-Code, convert, and add to conversion list		
-					}
-				}
-			}
-		}
-		else {				######### If the aperture type is NOT the same:
+    if ( lc($masterGerber->mode()) eq lc($self->mode()) ) {
+        # No work to do.
+        return 1;
+    }
 
-			foreach $Dcount (10..1000) {
-				if (! exists($master->{'apertures'}{"D".$Dcount}) && ! exists($self->{'apertures'}{"D".$Dcount})) {
-					$master->{'apertures'}{'D'.$Dcount} = $self->{'apertures'}{$apt};
-					$conversionlist->{$apt} = "D".$Dcount;
-					last;
-						############ Find new D-Code, convert TODO, and add to conversion list		
-				}
-			}
-		}
-	}
-	else {					########### Define the $mod: Circle, Modifier, or doesn't need $mod
-		$mod = $self->_aperturemodconvert($apt,$master);
-		foreach $masterapt (keys %{$master->{'apertures'}}) {
-			if ($self->{'apertures'}{$apt}{'type'} eq $master->{'apertures'}{$masterapt}{'type'}) {
-				if ($self->{'apertures'}{$apt}{$mod} eq $master->{'apertures'}{$masterapt}{$mod}) {
-						######### If it's NOT in the master file, is a $type, and the $type's $mod is 
-						######### EQUAL to ANY master aperture already defined:
-					$self->{'apertures'}{$apt} = $master->{'apertures'}{$masterapt};
-					$conversionlist->{$apt} = $masterapt;
-						###########Force the current aperture to be equal to the master, and add to conversionlist
-				}
-			}
-		}				
-		if (! exists($conversionlist->{$apt})) {
-					######### If none of the aperture values in the master equal the current apertures, add to master
-			$master->{'apertures'}{$apt} = $self->{'apertures'}{$apt};
-		}			
-	}
+    my $masterMode = $masterGerber->mode();
+    my $masterFormat = $masterGerber->format();
 
- } 
-# For every Function
- foreach $s_func (keys $self->{'functions'}) {
- 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-							### Step 2A: Add back dropped zeroes from original Gerb, if needed
-		my $coord = $self->{'functions'}[$s_func]{'coord'} ;
-		my $formatlength = $self->{'parameters'}{'FS'}{'format'}{'integer'}+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
-		my $testvalue;
- 		my $joiner; 
-		my @coordsplit = split(/([X|Y|I|J])/,$coord);
-		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
-		my $currentChar;
-		foreach my $coordvalue (@coordsplit) {
-			$testvalue = $coordvalue;
-			$testvalue =~ tr/[+\-]//d;
-			if ($coordvalue =~ m/([XYIJ])/i) {
-				$currentChar = $1;
-			}
-			elsif ((length($testvalue)<$formatlength) && ! ($coordvalue =~ /X|Y|I|J/i)) {
- 				$joiner = $formatlength - length($testvalue);
-				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					$coordvalue = _leadingzeroExtend($coordvalue,$joiner,'0');
-				}
-			}
-		}
-		my $tempcoord = join('',@coordsplit);
-		@coordsplit = split(/([X|Y|I|J])/,$tempcoord);
-		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
-							### Step 2B: Add back Leading Zeros
-		if ($self->{'parameters'}{'FS'}{'format'}{'integer'} ne $maxLen) {
-			if ($self->{'parameters'}{'FS'}{'format'}{'integer'} < $maxLen) {
-#TODO
-				$intjoiner = $maxLen+$self->{'parameters'}{'FS'}{'format'}{'decimal'};
+    # Convert apertures.
+    foreach my $aperture ( keys(%{ $self->{'apertures'} }) ) {
+        $self->_convertAperture($aperture, $masterMode);
+    }
 
-				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					foreach my $intvalue (@coordsplit) {
-						$testvalue = $intvalue;
-						$testvalue =~ tr/[+\-]//d;
-						if ($intvalue =~ m/([XYIJ])/i) {
-							$currentChar = $1;
-						}
-						elsif ((length($testvalue)<$intjoiner) && ! ($intvalue =~ /X|Y|I|J/i)) {
- 							$joiner = $intjoiner- length($testvalue);
-							$intvalue = _leadingzeroExtend($intvalue,$joiner,'0');
-						}
-					}
+    # Convert functions.
+    for ( my $index = 0; $index < scalar(@{ $self->{'functions'} }); ++$index ) {
+        $self->_convertFunction($index, $masterMode, $masterFormat);
+    }
 
-				}
-			}
-		}
-		$tempcoord = join('',@coordsplit);
-		@coordsplit = split(/([X|Y|I|J])/,$tempcoord);
-		shift(@coordsplit);		#Since the coordinates start with a delimiter, remove first empty string.
-							### Step 2C: Add back Trailing Zeros
-		if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} ne $maxLen) {
-			if ($self->{'parameters'}{'FS'}{'format'}{'decimal'} < $maxLen) {
-				$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
-				$decjoiner = 2*$maxLen;
-				if ($self->{'parameters'}{'FS'}{'zero'} =~/^L/i){
-					foreach my $decvalue (@coordsplit) {
-						$testvalue = $decvalue;
-						$testvalue =~ tr/[+\-]//d;
-						if ($decvalue =~ m/([XYIJ])/i) {
-							$currentChar = $1;
-						}
-						elsif ((length($testvalue)<$decjoiner) && !($decvalue =~ /X|Y|I|J/i)) {
- 							$joiner = $decjoiner- length($testvalue);
-							$decvalue = _leadingzeroExtend($decvalue,$joiner,'1');
-						}
-					}
-				}
-				else {
-					$coord = $xcoord . $ycoord . $icoord . $jcoord;
-				}
-			}
-		}
-		$coord = join('',@coordsplit);
-		$self->{'functions'}[$s_func]{'coord'} = $coord ;
-	}
- }
- foreach $s_func (keys $self->{'functions'}) {		### Step 2B: Convert MM to IN (if needed)
- 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-		if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-			$coord = $self->{'functions'}[$s_func]{'coord'};
+# G70
+# G71
+   
 
-			$xcoord = ''; $ycoord = ''; $icoord = ''; $jcoord = '';
+    # Convert format specification.
+    $self->format('format' => { 'integer' => $masterFormat->{'format'}->{'integer'},
+                                'decimal' => $masterFormat->{'format'}->{'decimal'} },
+                  'zero' => $masterFormat->{'zero'},
+                  'coordinates' => $masterFormat->{'coordinates'});
+    $self->mode($masterMode);
 
-			if ($coord =~ m/X[0-9]+/){ $xcoord = $self->_moCoordconvert($maxLen,$&)};
-			if ($coord =~ m/Y[0-9]+/){ $ycoord = $self->_moCoordconvert($maxLen,$&)};
-			if ($coord =~ m/I[0-9]+/){ $icoord = $self->_moCoordconvert($maxLen,$&)};
-			if ($coord =~ m/J[0-9]+/){ $jcoord = $self->_moCoordconvert($maxLen,$&)};
-			$self->{'functions'}[$s_func]{'coord'} = $xcoord . $ycoord . $icoord . $jcoord;
-		}
- 	}
- }
- foreach $s_func (keys $self->{'functions'}) {		### Step 2C: Edit Function Codes for each individual Gerber File from conversionlist
-							#	For each function in the hash, if the function contains coordinates, 
-							#process those coordinates in order to update the MO values. Otherwise, ignore it.
-	if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
- 		$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
-	}
-							#	For each function in the hash, if the function is an aperture 
-							# listed in the conversionlist, convert it. Otherwise, ignore it.
-	if (exists($self->{'functions'}[$s_func]{'aperture'}) && defined($self->{'functions'}[$s_func]{'aperture'})){
-		if (exists($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}}) && defined($conversionlist->{$self->{'functions'}[$s_func]{'aperture'}} )) {
-			$self->{'functions'}[$s_func]{'aperture'} = $conversionlist->{$self->{'functions'}[$s_func]{'aperture'}};
-		}
-	}
-							#      For each function in the hash, if the function is an SR parameter call, 
-							# and the units of MO don't agree with master, Convert. Otherwise, ignore it.
-	if (exists($self->{'functions'}[$s_func]{'param'}) && defined($self->{'functions'}[$s_func]{'param'})){
-		if ($self->{'functions'}[$s_func]{'param'} =~ m/^SR.*/) {
-			if (lc $self->{'parameters'}{'mode'} ne lc $master_mode){
-				@SRarray = split(/(I|J)/,$self->{'functions'}[$s_func]{'param'});
-				splice @SRarray, 0, 1;
-				foreach my $submodifier (@SRarray) {
-					if ($SRarray[$submodifier] ne 'I' && $SRarray[$submodifier] ne 'J') {
-						$SRarray[$submodifier] = $SRarray[$submodifier] / 25.4;
-					}
-				}
-				$self->{'functions'}[$s_func]{'param'} = join('',@SRarray);
-			}
-		}
-	}
- }
-### Step 3: Make final Format changes, and Append Entire Functions Object to Master
- $master->{'conversionlist'} = $conversionlist;
- $self->{'parameters'}{'FS'}{'format'}{'integer'} = $master_int;
- $self->{'parameters'}{'FS'}{'format'}{'decimal'} = $master_dec;
- $self->{'parameters'}{'mode'} = $master_mode;
 }
 
-###################################################
+sub _convertAperture
+{
+
+    my $self = shift;
+    my $aperture = shift;
+    my $mode = shift;
+
+    if ( lc($self->mode()) eq lc($mode) ) {
+        # No work to do.
+        return;
+    }
+
+    if ( $self->{'apertures'}{$aperture}{'type'} eq 'C' ) {
+        my $diameter = $self->{'apertures'}{$aperture}{'diameter'};
+
+        if ( lc($self->mode()) eq 'mm' ) {
+            $self->{'apertures'}{$aperture}{'diameter'} = $self->_mmToInch($diameter);
+        }
+        else {
+            $self->{'apertures'}{$aperture}{'diameter'} = $self->_inchToMM($diameter);
+        }
+    }
+
+    my $modifiers = $self->{'apertures'}{$aperture}{'modifiers'};
+    my @modifiers = split(/X/, $modifiers);
+    my @convertedModifiers;
+
+    foreach my $modifier ( @modifiers ) {
+        my $convertedModifier;
+
+        if ( lc($self->mode()) eq 'mm' ) {
+            $convertedModifier = $self->_mmToInch($modifier);
+        }
+        else {
+            $convertedModifier = $self->_inchToMM($modifier);
+        }
+
+        push(@convertedModifiers, $convertedModifier);
+    }
+
+    $self->{'apertures'}{$aperture}{'modifiers'} = join('X', @convertedModifiers);
+
+    return 1;
+
+}
+
+sub _convertFunction
+{
+
+    my $self = shift;
+    my $index = shift;
+    my $masterMode = shift;
+    my $masterFormat = shift;
+
+    my $function = $self->{'functions'}[$index];
+
+    if ( lc($self->mode()) eq $masterMode ||
+         !exists($function->{'coord'}) || 
+         !defined($function->{'coord'}) )
+    {
+        # If this is G71 or G70, remove it. We don't want these codes interfering
+        # with the master conversion setting.
+
+        if ( exists($function->{'func'}) && 
+             defined($function->{'func'}) &&
+             $function->{'func'} =~ m/G71|G70/ )
+        {
+            splice(@{ $self->{'functions'} }, $index, 1);
+        }
+
+        return;
+    }
+
+    my $masterFormatLength = $masterFormat->{'format'}->{'decimal'} + $masterFormat->{'format'}->{'integer'};
+    my $masterLeadingZeros = ( $masterFormat->{'zero'} eq 'L' ) ? 1 : 0;
+
+    my $coord = $function->{'coord'};
+    my @coordinates = split(/([X|Y|I|J])/, $coord);
+
+    # Pop the delimiter off of the array, as we don't need it.
+    shift(@coordinates);
+
+    my $axis;
+    my $sign;
+    my %axes = ( 'X' => undef, 'Y' => undef, 'I' => undef, 'J' => undef );
+    my $wholeDigits = $self->format()->{'format'}->{'integer'};
+    my $precisionDigits = $self->format()->{'format'}->{'decimal'};
+
+    foreach my $coordinate ( @coordinates ) {
+
+        my $tempCoordinate = $coordinate;
+
+        if ( $tempCoordinate =~ m/([+\-])/ ) {
+            $sign = $1;
+        }
+
+        $tempCoordinate =~ tr/+-//d;
+
+        if ( $tempCoordinate =~ m/([XYIJ])/i ) {
+            $axis = $1;
+            next;
+        }
+
+        my $precisionPart = substr($tempCoordinate, -$precisionDigits);
+        my $wholePart = substr($tempCoordinate, 0, length($tempCoordinate) - $precisionDigits);
+
+        my $value = "$wholePart.$precisionPart" + 0;
+
+        # Metric/imperial conversion.
+        if ( lc($masterMode) eq 'mm' ) {
+            $value = $self->_inchToMM($value);
+        }
+        else {
+            $value = $self->_mmToInch($value);
+        }
+
+        my @parts = split(/\./, "$value");
+
+        if ( length($parts[0]) > $masterFormat->{'format'}->{'integer'} ) {
+            $self->error('[_convertFunction] integer length exceeded format specification.');
+            return undef;
+        }
+
+        if ( $masterLeadingZeros ) {
+            my $decimalLength = length($parts[1]);
+
+            if ( $decimalLength > $masterFormat->{'format'}->{'decimal'} ) {
+                $parts[1] = substr($parts[1], 0, $masterFormat->{'format'}->{'decimal'});
+            }
+            else {
+                my $padLength = $masterFormat->{'format'}->{'decimal'} - $decimalLength;
+
+                if ( $padLength ) {
+                    $parts[1] = sprintf("%s%0*d", $parts[1], $padLength, 0);
+                }
+            }
+        }
+        else {
+            # Handle trailing zeros.
+        }
+
+        $value = $parts[0] . $parts[1];
+
+        if ( defined($sign) ) {
+            $value = $sign . $value;
+        }
+
+        $axes{$axis} = $value;
+
+        $axis = undef;
+        $sign = undef;
+    }
+
+    my @convertedCoordinates;
+
+    foreach my $key ( keys(%axes) ) {
+        if ( !defined($axes{$key}) ) {
+            next;
+        }
+
+        push(@convertedCoordinates, $key);
+        push(@convertedCoordinates, $axes{$key});
+    }
+
+    $self->{'functions'}[$index]{'coord'} = join('', @convertedCoordinates);
+    $self->{'functions'}[$index]{'xy_coords'} = $self->_processCoords($function->{'coord'},
+                                                                      $function->{'op'});
+    
+}
 
 sub translate {
 
