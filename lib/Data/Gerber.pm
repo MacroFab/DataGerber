@@ -44,15 +44,21 @@ our $VERSION = "0.02";
 
 =head1 DESCRIPTION
 
- Data::Gerber provides the capabilities to represent a series of RS-274X (commonly
- referred to as Gerber data) instructions in an object-oriented way, with
- methods and sub-classes for performing common activities such as:
- 
+Data::Gerber provides the capabilities to represent a series of RS-274X (commonly
+referred to as Gerber data) instructions in an object-oriented way, with
+methods and sub-classes for performing common activities such as:
+
+B<This Module is currently in "alpha" state and may contain numerous bugs or 
+have partial implementations of the spec.  Do not use in production systems.>
+
 =over 8
 
 =item Parsing Data from Files via L<Gerber::Parser>
+
 =item Writing Data to Files via L<Gerber::Writer>
+
 =item Determining Boundaries of Drawn Data
+
 =item Basic Translations and Conversions of Data
 
 =back
@@ -631,11 +637,17 @@ sub format {
 Add a function to the document.
  
 Standard functions supported:
+
 =over 8
+
 =item Aperture Select
+
 =item G-Codes
+
 =item Moves
+
 =item Repeatable Parameter Calls
+
 =back
 
 OPTS is a hash that provides one or more of the following keys, which define
@@ -646,18 +658,23 @@ the function:
 Select the aperture to use for following functions
  
 =item func
+
 Function Code (i.e. G-Codes)
  
 =item coord
+
 Coordinate Data
  
 =item op
+
 Operation Code (i.e. D-Code)
 
 =item param
+
 Special parameter which can be repeated multiple times (e.g. LP, SR)
  
 =item comment
+
 A comment (used only with G04/G4, if you specify a comment for a non-G04
 command, it may be useful in certain file writers that would automatically
 generate a new comment for you)
@@ -681,8 +698,9 @@ defined the apertures indicated, etc.):
 This method returns true (1) upon success, and undef and sets the error message 
 on error.
  
-B<Notes on Sequence>
 =over 8
+
+=item Notes on Sequence
 
 This library handles gerber data in a streaming fashion - that is, function
 sequences must be issued in the same order they would be issued in a file, as
@@ -795,6 +813,7 @@ When called with no arguments, this method returns all functions that have
 been added the document.
  
 OPTS is a hash with any of the following keys:
+
 =over 8
 
 =item count
@@ -907,6 +926,423 @@ sub height {
  
  return $self->{'boundaries'}{'TY'} - $self->{'boundaries'}{'BY'};
  
+}
+
+
+
+=head2 convert( NEW_OBJECT )
+
+Translate the current gerber object instructions into a new type of gerber object,
+based on format, units, etc.  NEW_OBJECT should be an initialized Data::Gerber
+object, with the format/unit/etc parameters specified. 
+
+After completion, NEW_OBJECT will represent the same functions and parameters as
+the current Gerber object, translated to the new set of formats.
+ 
+Standard functions supported:
+
+=over 8
+
+=item Aperture Select
+
+=item G-Codes
+
+=item Moves
+
+=item Repeatable Parameter Calls
+
+=back
+
+B<Warning: No Support for Aperture Macros!>
+
+=back
+
+=cut
+
+sub convert {
+
+    my $self = shift;
+    my $masterGerber = shift;
+
+    if ( !defined($masterGerber) || !$masterGerber->isa('Data::Gerber') ) {
+        $self->error('[convert] master Gerber was not provided or was not a Data::Gerber object.');
+        return undef;
+    }
+
+    if ( lc($masterGerber->mode()) eq lc($self->mode()) ) {
+        # No work to do.
+        return 1;
+    }
+
+    my $masterMode = $masterGerber->mode();
+    my $masterFormat = $masterGerber->format();
+
+    # Convert apertures.
+    foreach my $aperture ( keys(%{ $self->{'apertures'} }) ) {
+        $self->_convertAperture($aperture, $masterMode);
+    }
+
+    # Convert functions.
+    for ( my $index = 0; $index < scalar(@{ $self->{'functions'} }); ++$index ) {
+        $self->_convertFunction($index, $masterMode, $masterFormat);
+    }
+
+# G70
+# G71
+   
+
+    # Convert format specification.
+    $self->format('format' => { 'integer' => $masterFormat->{'format'}->{'integer'},
+                                'decimal' => $masterFormat->{'format'}->{'decimal'} },
+                  'zero' => $masterFormat->{'zero'},
+                  'coordinates' => $masterFormat->{'coordinates'});
+    $self->mode($masterMode);
+
+}
+
+sub translate {
+
+ my $self = shift;
+ my @TransCoord;
+
+ $TransCoord[0] = shift;
+ $TransCoord[1] = shift;
+
+    # CC - TODO - Why is this here?
+    
+ my $fDiv = 10 ** 3; 
+ 
+ $TransCoord[0] *= $fDiv;
+ $TransCoord[1] *= $fDiv;
+
+ my @XYCoord;
+ my %XYCoord;
+
+ my $s_func;
+ my $submodifier;
+
+### Step 2D: Add Offsets to Coordinates,
+	### Make this its own Sub-routine called right at this moment
+	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
+ foreach $s_func (keys $self->{'functions'}) {
+ 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
+		
+		@XYCoord = split(/(X|Y|I|J)/,$self->{'functions'}[$s_func]{'coord'});
+		splice @XYCoord, 0, 1;
+		%XYCoord = @XYCoord;						#Array to Hash
+
+		foreach $submodifier (keys %XYCoord) {
+			if ($submodifier eq 'X') {
+				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[0];
+			}
+			elsif ($submodifier eq 'Y') {
+				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[1];
+			}		
+		}
+		@XYCoord = %XYCoord;						#Hash to Array
+
+			
+		if (($XYCoord[0] eq 'Y') && scalar(@XYCoord)>2 ) {
+			($XYCoord[0], $XYCoord[1],$XYCoord[2], $XYCoord[3]) = ($XYCoord[2], $XYCoord[3],$XYCoord[0], $XYCoord[1]);
+		}
+		
+		$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
+		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
+			if (exists($self->{'functions'}[$s_func]{'op'}) && defined($self->{'functions'}[$s_func]{'op'})){
+				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+			}
+		}
+	}
+ }
+ my $xoffset = $TransCoord[0] / (10**3);
+ my $yoffset = $TransCoord[1] / (10**3);
+ if (defined($self->{'boundaries'}{'LX'})) {
+ 	$self->{'boundaries'}{'LX'} = $self->{'boundaries'}{'LX'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'BY'})) {
+        $self->{'boundaries'}{'BY'} = $self->{'boundaries'}{'BY'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'RX'})) {
+        $self->{'boundaries'}{'RX'} = $self->{'boundaries'}{'RX'}+$xoffset;
+ }
+ if (defined($self->{'boundaries'}{'TY'})) {
+        $self->{'boundaries'}{'TY'} = $self->{'boundaries'}{'TY'}+$xoffset;
+ }
+
+
+}
+
+
+sub rotate {
+
+ my $self = shift;
+
+
+ my $RotationBit = shift;
+
+
+ my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
+
+
+ my @XYCoord;
+ my %XYCoord;
+
+ my $s_func;
+ my $submodifier;
+ my $modifier;
+ my $apt;
+ my @modarray;
+
+
+ if ($RotationBit == '1') {
+
+	#Rotate functions with coordinates
+ 	foreach $s_func ($self->{'functions'}) {
+ 		if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
+		
+			@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
+			splice @XYCoord, 0, 1;
+
+			
+			if (scalar(@XYCoord)>2 ) {
+				($XYCoord[1], $XYCoord[3]) = ($XYCoord[3],$XYCoord[1]);
+			}
+			elsif (($XYCoord[0] eq 'X') && scalar(@XYCoord)<=2 ) {
+				$XYCoord[0]= 'Y';
+			}
+			elsif (($XYCoord[0] eq 'Y') && scalar(@XYCoord)<=2 ) {
+				$XYCoord[0]= 'X';
+			}
+
+
+			$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
+			if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
+				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
+			}
+		}
+	}
+
+	#Rotate Apertures with more than one modifier		#TODO: Handle Polygons
+ 	foreach $apt (keys %{$self->{'apertures'}}){
+
+ 		if ($self->{'apertures'}{$apt}{'type'} eq "O") {
+
+			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+			@modarray = split(/X/,$modifier);
+
+			($modarray[0],$modarray[1]) = ($modarray[1],$modarray[0]);
+
+			if (scalar(@modarray) == 4) {	#Specifies rotation of hole
+				($modarray[2],$modarray[3]) = ($modarray[3],$modarray[2]);
+			}
+
+			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+		}
+ 		if ($self->{'apertures'}{$apt}{'type'} eq "R") {
+
+			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+
+			@modarray = split(/X/,$modifier);
+
+			($modarray[0],$modarray[1]) = ($modarray[1],$modarray[0]);
+
+			if (scalar(@modarray) == 4) {	#Specifies rotation of hole
+				($modarray[2],$modarray[3]) = ($modarray[3],$modarray[2]);
+			}
+
+			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+
+		}
+
+
+ 		if ($self->{'apertures'}{$apt}{'type'} eq "P") {	#Only matters for corner-case of regular polygon w/ rectangular hole
+
+			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
+			@modarray = split(/X/,$modifier);
+
+			if (scalar(@modarray) == 5) {	#Specifies rotation of hole
+				($modarray[3],$modarray[4]) = ($modarray[4],$modarray[3]);
+			}
+
+			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
+
+		}
+	}
+ }
+
+}
+
+
+sub _convertAperture
+{
+
+    my $self = shift;
+    my $aperture = shift;
+    my $mode = shift;
+
+    if ( lc($self->mode()) eq lc($mode) ) {
+        # No work to do.
+        return;
+    }
+
+    if ( $self->{'apertures'}{$aperture}{'type'} eq 'C' ) {
+        my $diameter = $self->{'apertures'}{$aperture}{'diameter'};
+
+        if ( lc($self->mode()) eq 'mm' ) {
+            $self->{'apertures'}{$aperture}{'diameter'} = $self->_mmToInch($diameter);
+        }
+        else {
+            $self->{'apertures'}{$aperture}{'diameter'} = $self->_inchToMM($diameter);
+        }
+    }
+
+    my $modifiers = $self->{'apertures'}{$aperture}{'modifiers'};
+    my @modifiers = split(/X/, $modifiers);
+    my @convertedModifiers;
+
+    foreach my $modifier ( @modifiers ) {
+        my $convertedModifier;
+
+        if ( lc($self->mode()) eq 'mm' ) {
+            $convertedModifier = $self->_mmToInch($modifier);
+        }
+        else {
+            $convertedModifier = $self->_inchToMM($modifier);
+        }
+
+        push(@convertedModifiers, $convertedModifier);
+    }
+
+    $self->{'apertures'}{$aperture}{'modifiers'} = join('X', @convertedModifiers);
+
+    return 1;
+
+}
+
+sub _convertFunction
+{
+
+    my $self = shift;
+    my $index = shift;
+    my $masterMode = shift;
+    my $masterFormat = shift;
+
+    my $function = $self->{'functions'}[$index];
+
+    if ( lc($self->mode()) eq $masterMode ||
+         !exists($function->{'coord'}) || 
+         !defined($function->{'coord'}) )
+    {
+        # If this is G71 or G70, remove it. We don't want these codes interfering
+        # with the master conversion setting.
+
+        if ( exists($function->{'func'}) && 
+             defined($function->{'func'}) &&
+             $function->{'func'} =~ m/G71|G70/ )
+        {
+            splice(@{ $self->{'functions'} }, $index, 1);
+        }
+
+        return;
+    }
+
+    my $masterFormatLength = $masterFormat->{'format'}->{'decimal'} + $masterFormat->{'format'}->{'integer'};
+    my $masterLeadingZeros = ( $masterFormat->{'zero'} eq 'L' ) ? 1 : 0;
+
+    my $coord = $function->{'coord'};
+    my @coordinates = split(/([X|Y|I|J])/, $coord);
+
+    # Pop the delimiter off of the array, as we don't need it.
+    shift(@coordinates);
+
+    my $axis;
+    my $sign;
+    my %axes = ( 'X' => undef, 'Y' => undef, 'I' => undef, 'J' => undef );
+    my $wholeDigits = $self->format()->{'format'}->{'integer'};
+    my $precisionDigits = $self->format()->{'format'}->{'decimal'};
+
+    foreach my $coordinate ( @coordinates ) {
+
+        my $tempCoordinate = $coordinate;
+
+        if ( $tempCoordinate =~ m/([+\-])/ ) {
+            $sign = $1;
+        }
+
+        $tempCoordinate =~ tr/+-//d;
+
+        if ( $tempCoordinate =~ m/([XYIJ])/i ) {
+            $axis = $1;
+            next;
+        }
+
+        my $precisionPart = substr($tempCoordinate, -$precisionDigits);
+        my $wholePart = substr($tempCoordinate, 0, length($tempCoordinate) - $precisionDigits);
+
+        my $value = "$wholePart.$precisionPart" + 0;
+
+        # Metric/imperial conversion.
+        if ( lc($masterMode) eq 'mm' ) {
+            $value = $self->_inchToMM($value);
+        }
+        else {
+            $value = $self->_mmToInch($value);
+        }
+
+        my @parts = split(/\./, "$value");
+
+        if ( length($parts[0]) > $masterFormat->{'format'}->{'integer'} ) {
+            $self->error('[_convertFunction] integer length exceeded format specification.');
+            return undef;
+        }
+
+        if ( $masterLeadingZeros ) {
+            my $decimalLength = length($parts[1]);
+
+            if ( $decimalLength > $masterFormat->{'format'}->{'decimal'} ) {
+                $parts[1] = substr($parts[1], 0, $masterFormat->{'format'}->{'decimal'});
+            }
+            else {
+                my $padLength = $masterFormat->{'format'}->{'decimal'} - $decimalLength;
+
+                if ( $padLength ) {
+                    $parts[1] = sprintf("%s%0*d", $parts[1], $padLength, 0);
+                }
+            }
+        }
+        else {
+            # Handle trailing zeros.
+        }
+
+        $value = $parts[0] . $parts[1];
+
+        if ( defined($sign) ) {
+            $value = $sign . $value;
+        }
+
+        $axes{$axis} = $value;
+
+        $axis = undef;
+        $sign = undef;
+    }
+
+    my @convertedCoordinates;
+
+    foreach my $key ( keys(%axes) ) {
+        if ( !defined($axes{$key}) ) {
+            next;
+        }
+
+        push(@convertedCoordinates, $key);
+        push(@convertedCoordinates, $axes{$key});
+    }
+
+    $self->{'functions'}[$index]{'coord'} = join('', @convertedCoordinates);
+    $self->{'functions'}[$index]{'xy_coords'} = $self->_processCoords($function->{'coord'},
+                                                                      $function->{'op'});
+    
 }
 
  # validate g-codes
@@ -1226,420 +1662,7 @@ sub _mmToInch
 
 }
 
-=head2 convert( NEW_OBJECT )
 
-Translate the current gerber object instructions into a new type of gerber object,
-based on format, units, etc.  NEW_OBJECT should be an initialized Data::Gerber
-object, with the format/unit/etc parameters specified. 
-
-After completion, NEW_OBJECT will represent the same functions and parameters as
-the current Gerber object, translated to the new set of formats.
- 
-Standard functions supported:
-
-=over 8
-
-=item Aperture Select
-
-=item G-Codes
-
-=item Moves
-
-=item Repeatable Parameter Calls
-
-=back
-
-B<Warning: No Support for Aperture Macros!>
-
-=back
-
-=cut
-
-sub convert
-{
-
-    my $self = shift;
-    my $masterGerber = shift;
-
-    if ( !defined($masterGerber) || !$masterGerber->isa('Data::Gerber') ) {
-        $self->error('[convert] master Gerber was not provided or was not a Data::Gerber object.');
-        return undef;
-    }
-
-    if ( lc($masterGerber->mode()) eq lc($self->mode()) ) {
-        # No work to do.
-        return 1;
-    }
-
-    my $masterMode = $masterGerber->mode();
-    my $masterFormat = $masterGerber->format();
-
-    # Convert apertures.
-    foreach my $aperture ( keys(%{ $self->{'apertures'} }) ) {
-        $self->_convertAperture($aperture, $masterMode);
-    }
-
-    # Convert functions.
-    for ( my $index = 0; $index < scalar(@{ $self->{'functions'} }); ++$index ) {
-        $self->_convertFunction($index, $masterMode, $masterFormat);
-    }
-
-# G70
-# G71
-   
-
-    # Convert format specification.
-    $self->format('format' => { 'integer' => $masterFormat->{'format'}->{'integer'},
-                                'decimal' => $masterFormat->{'format'}->{'decimal'} },
-                  'zero' => $masterFormat->{'zero'},
-                  'coordinates' => $masterFormat->{'coordinates'});
-    $self->mode($masterMode);
-
-}
-
-sub _convertAperture
-{
-
-    my $self = shift;
-    my $aperture = shift;
-    my $mode = shift;
-
-    if ( lc($self->mode()) eq lc($mode) ) {
-        # No work to do.
-        return;
-    }
-
-    if ( $self->{'apertures'}{$aperture}{'type'} eq 'C' ) {
-        my $diameter = $self->{'apertures'}{$aperture}{'diameter'};
-
-        if ( lc($self->mode()) eq 'mm' ) {
-            $self->{'apertures'}{$aperture}{'diameter'} = $self->_mmToInch($diameter);
-        }
-        else {
-            $self->{'apertures'}{$aperture}{'diameter'} = $self->_inchToMM($diameter);
-        }
-    }
-
-    my $modifiers = $self->{'apertures'}{$aperture}{'modifiers'};
-    my @modifiers = split(/X/, $modifiers);
-    my @convertedModifiers;
-
-    foreach my $modifier ( @modifiers ) {
-        my $convertedModifier;
-
-        if ( lc($self->mode()) eq 'mm' ) {
-            $convertedModifier = $self->_mmToInch($modifier);
-        }
-        else {
-            $convertedModifier = $self->_inchToMM($modifier);
-        }
-
-        push(@convertedModifiers, $convertedModifier);
-    }
-
-    $self->{'apertures'}{$aperture}{'modifiers'} = join('X', @convertedModifiers);
-
-    return 1;
-
-}
-
-sub _convertFunction
-{
-
-    my $self = shift;
-    my $index = shift;
-    my $masterMode = shift;
-    my $masterFormat = shift;
-
-    my $function = $self->{'functions'}[$index];
-
-    if ( lc($self->mode()) eq $masterMode ||
-         !exists($function->{'coord'}) || 
-         !defined($function->{'coord'}) )
-    {
-        # If this is G71 or G70, remove it. We don't want these codes interfering
-        # with the master conversion setting.
-
-        if ( exists($function->{'func'}) && 
-             defined($function->{'func'}) &&
-             $function->{'func'} =~ m/G71|G70/ )
-        {
-            splice(@{ $self->{'functions'} }, $index, 1);
-        }
-
-        return;
-    }
-
-    my $masterFormatLength = $masterFormat->{'format'}->{'decimal'} + $masterFormat->{'format'}->{'integer'};
-    my $masterLeadingZeros = ( $masterFormat->{'zero'} eq 'L' ) ? 1 : 0;
-
-    my $coord = $function->{'coord'};
-    my @coordinates = split(/([X|Y|I|J])/, $coord);
-
-    # Pop the delimiter off of the array, as we don't need it.
-    shift(@coordinates);
-
-    my $axis;
-    my $sign;
-    my %axes = ( 'X' => undef, 'Y' => undef, 'I' => undef, 'J' => undef );
-    my $wholeDigits = $self->format()->{'format'}->{'integer'};
-    my $precisionDigits = $self->format()->{'format'}->{'decimal'};
-
-    foreach my $coordinate ( @coordinates ) {
-
-        my $tempCoordinate = $coordinate;
-
-        if ( $tempCoordinate =~ m/([+\-])/ ) {
-            $sign = $1;
-        }
-
-        $tempCoordinate =~ tr/+-//d;
-
-        if ( $tempCoordinate =~ m/([XYIJ])/i ) {
-            $axis = $1;
-            next;
-        }
-
-        my $precisionPart = substr($tempCoordinate, -$precisionDigits);
-        my $wholePart = substr($tempCoordinate, 0, length($tempCoordinate) - $precisionDigits);
-
-        my $value = "$wholePart.$precisionPart" + 0;
-
-        # Metric/imperial conversion.
-        if ( lc($masterMode) eq 'mm' ) {
-            $value = $self->_inchToMM($value);
-        }
-        else {
-            $value = $self->_mmToInch($value);
-        }
-
-        my @parts = split(/\./, "$value");
-
-        if ( length($parts[0]) > $masterFormat->{'format'}->{'integer'} ) {
-            $self->error('[_convertFunction] integer length exceeded format specification.');
-            return undef;
-        }
-
-        if ( $masterLeadingZeros ) {
-            my $decimalLength = length($parts[1]);
-
-            if ( $decimalLength > $masterFormat->{'format'}->{'decimal'} ) {
-                $parts[1] = substr($parts[1], 0, $masterFormat->{'format'}->{'decimal'});
-            }
-            else {
-                my $padLength = $masterFormat->{'format'}->{'decimal'} - $decimalLength;
-
-                if ( $padLength ) {
-                    $parts[1] = sprintf("%s%0*d", $parts[1], $padLength, 0);
-                }
-            }
-        }
-        else {
-            # Handle trailing zeros.
-        }
-
-        $value = $parts[0] . $parts[1];
-
-        if ( defined($sign) ) {
-            $value = $sign . $value;
-        }
-
-        $axes{$axis} = $value;
-
-        $axis = undef;
-        $sign = undef;
-    }
-
-    my @convertedCoordinates;
-
-    foreach my $key ( keys(%axes) ) {
-        if ( !defined($axes{$key}) ) {
-            next;
-        }
-
-        push(@convertedCoordinates, $key);
-        push(@convertedCoordinates, $axes{$key});
-    }
-
-    $self->{'functions'}[$index]{'coord'} = join('', @convertedCoordinates);
-    $self->{'functions'}[$index]{'xy_coords'} = $self->_processCoords($function->{'coord'},
-                                                                      $function->{'op'});
-    
-}
-
-sub translate {
-
- my $self = shift;
- my @TransCoord;
-
- $TransCoord[0] = shift;
- $TransCoord[1] = shift;
-
-    # CC - TODO - Why is this here?
-    
- my $fDiv = 10 ** 3; 
- 
- $TransCoord[0] *= $fDiv;
- $TransCoord[1] *= $fDiv;
-
- my @XYCoord;
- my %XYCoord;
-
- my $s_func;
- my $submodifier;
-
-### Step 2D: Add Offsets to Coordinates,
-	### Make this its own Sub-routine called right at this moment
-	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
- foreach $s_func (keys $self->{'functions'}) {
- 	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-		
-		@XYCoord = split(/(X|Y|I|J)/,$self->{'functions'}[$s_func]{'coord'});
-		splice @XYCoord, 0, 1;
-		%XYCoord = @XYCoord;						#Array to Hash
-
-		foreach $submodifier (keys %XYCoord) {
-			if ($submodifier eq 'X') {
-				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[0];
-			}
-			elsif ($submodifier eq 'Y') {
-				$XYCoord{$submodifier} = $XYCoord{$submodifier} + $TransCoord[1];
-			}		
-		}
-		@XYCoord = %XYCoord;						#Hash to Array
-
-			
-		if (($XYCoord[0] eq 'Y') && scalar(@XYCoord)>2 ) {
-			($XYCoord[0], $XYCoord[1],$XYCoord[2], $XYCoord[3]) = ($XYCoord[2], $XYCoord[3],$XYCoord[0], $XYCoord[1]);
-		}
-		
-		$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
-		if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
-			if (exists($self->{'functions'}[$s_func]{'op'}) && defined($self->{'functions'}[$s_func]{'op'})){
-				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
-			}
-		}
-	}
- }
- my $xoffset = $TransCoord[0] / (10**3);
- my $yoffset = $TransCoord[1] / (10**3);
- if (defined($self->{'boundaries'}{'LX'})) {
- 	$self->{'boundaries'}{'LX'} = $self->{'boundaries'}{'LX'}+$xoffset;
- }
- if (defined($self->{'boundaries'}{'BY'})) {
-        $self->{'boundaries'}{'BY'} = $self->{'boundaries'}{'BY'}+$xoffset;
- }
- if (defined($self->{'boundaries'}{'RX'})) {
-        $self->{'boundaries'}{'RX'} = $self->{'boundaries'}{'RX'}+$xoffset;
- }
- if (defined($self->{'boundaries'}{'TY'})) {
-        $self->{'boundaries'}{'TY'} = $self->{'boundaries'}{'TY'}+$xoffset;
- }
-
-
-}
-
-
-sub rotate {
-
- my $self = shift;
-
-
- my $RotationBit = shift;
-
-
- my $fDiv = 10 ** 3;		#In what units are the bounding boxes? I specified units in Thou, so this should be 
-
-
- my @XYCoord;
- my %XYCoord;
-
- my $s_func;
- my $submodifier;
- my $modifier;
- my $apt;
- my @modarray;
-
-
- if ($RotationBit == '1') {
-
-	#Rotate functions with coordinates
- 	foreach $s_func ($self->{'functions'}) {
- 		if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
-		
-			@XYCoord = split(/(X|Y)/,$self->{'functions'}[$s_func]{'coord'});
-			splice @XYCoord, 0, 1;
-
-			
-			if (scalar(@XYCoord)>2 ) {
-				($XYCoord[1], $XYCoord[3]) = ($XYCoord[3],$XYCoord[1]);
-			}
-			elsif (($XYCoord[0] eq 'X') && scalar(@XYCoord)<=2 ) {
-				$XYCoord[0]= 'Y';
-			}
-			elsif (($XYCoord[0] eq 'Y') && scalar(@XYCoord)<=2 ) {
-				$XYCoord[0]= 'X';
-			}
-
-
-			$self->{'functions'}[$s_func]{'coord'} = join('', @XYCoord);
-			if (exists($self->{'functions'}[$s_func]{'xy_coords'}) && defined($self->{'functions'}[$s_func]{'xy_coords'})){
-				$self->{'functions'}[$s_func]{'xy_coords'} = $self->_processCoords($self->{'functions'}[$s_func]{'coord'}, $self->{'functions'}[$s_func]{'op'});
-			}
-		}
-	}
-
-	#Rotate Apertures with more than one modifier		#TODO: Handle Polygons
- 	foreach $apt (keys %{$self->{'apertures'}}){
-
- 		if ($self->{'apertures'}{$apt}{'type'} eq "O") {
-
-			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
-			@modarray = split(/X/,$modifier);
-
-			($modarray[0],$modarray[1]) = ($modarray[1],$modarray[0]);
-
-			if (scalar(@modarray) == 4) {	#Specifies rotation of hole
-				($modarray[2],$modarray[3]) = ($modarray[3],$modarray[2]);
-			}
-
-			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
-
-		}
- 		if ($self->{'apertures'}{$apt}{'type'} eq "R") {
-
-			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
-
-			@modarray = split(/X/,$modifier);
-
-			($modarray[0],$modarray[1]) = ($modarray[1],$modarray[0]);
-
-			if (scalar(@modarray) == 4) {	#Specifies rotation of hole
-				($modarray[2],$modarray[3]) = ($modarray[3],$modarray[2]);
-			}
-
-			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
-
-
-		}
-
-
- 		if ($self->{'apertures'}{$apt}{'type'} eq "P") {	#Only matters for corner-case of regular polygon w/ rectangular hole
-
-			$modifier = $self->{'apertures'}{$apt}{'modifiers'};
-			@modarray = split(/X/,$modifier);
-
-			if (scalar(@modarray) == 5) {	#Specifies rotation of hole
-				($modarray[3],$modarray[4]) = ($modarray[4],$modarray[3]);
-			}
-
-			$self->{'apertures'}{$apt}{'modifiers'} = join('X',@modarray);
-
-		}
-	}
- }
-
-}
 
 =head1 AUTHOR
 
