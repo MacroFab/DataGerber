@@ -44,12 +44,12 @@ our $VERSION = "0.02";
 
 =head1 DESCRIPTION
 
+B<This Module is currently in "alpha" state and may contain numerous bugs or 
+have partial implementations of the spec.  Do not use in production systems.>
+
 Data::Gerber provides the capabilities to represent a series of RS-274X (commonly
 referred to as Gerber data) instructions in an object-oriented way, with
 methods and sub-classes for performing common activities such as:
-
-B<This Module is currently in "alpha" state and may contain numerous bugs or 
-have partial implementations of the spec.  Do not use in production systems.>
 
 =over 8
 
@@ -654,6 +654,7 @@ OPTS is a hash that provides one or more of the following keys, which define
 the function:
  
 =over 8
+
 =item aperture
 Select the aperture to use for following functions
  
@@ -953,9 +954,8 @@ Standard functions supported:
 
 =back
 
-B<Warning: No Support for Aperture Macros!>
+Warning: No Support for Aperture Macros!
 
-=back
 
 =cut
 
@@ -1666,12 +1666,12 @@ sub _mmToInch
 
 =head1 AUTHOR
 
- C. A. Church
- MacroFab, Inc.
+C. A. Church, D. Calderon, M. Smith
+MacroFab, Inc.
  
 =head1 SEE ALSO
 
- L<The Gerber File Format Specification|http://www.ucamco.com/files/downloads/file/3/the_gerber_file_format_specification.pdf>
+L<The Gerber File Format Specification|http://www.ucamco.com/files/downloads/file/3/the_gerber_file_format_specification.pdf>
  
 =cut
 
