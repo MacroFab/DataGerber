@@ -1024,7 +1024,7 @@ sub translate {
 ### Step 2D: Add Offsets to Coordinates,
 	### Make this its own Sub-routine called right at this moment
 	### First, need to fix Algorithm. If the Algorithm outputs the right format, then this part is trivial using split and splice to isolate and add
- foreach $s_func (keys $self->{'functions'}) {
+ foreach $s_func (keys %{ $self->{'functions'} }) {
  	if (exists( $self->{'functions'}[$s_func]{'coord'}) && defined( $self->{'functions'}[$s_func]{'coord'})) {
 		
 		@XYCoord = split(/(X|Y|I|J)/,$self->{'functions'}[$s_func]{'coord'});
