@@ -5,6 +5,13 @@
 
 =cut
 
+=head1 ARCHIVED
+
+B<This repository has been retired and is no longer in use.>
+Please use L<https://github.com/MacroFab/gerberos> instead.
+
+=cut
+
 =head1 SYNOPSIS
 
 	my $gerb = Data::Gerber->new();
