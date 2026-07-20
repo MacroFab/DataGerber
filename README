@@ -1,6 +1,11 @@
 Data-Gerber version 0.01
 ========================
 
+ARCHIVED - THIS REPOSITORY IS NO LONGER IN USE
+
+This repository has been retired and is no longer maintained. Please use
+https://github.com/MacroFab/gerberos instead.
+
 The README is used to introduce the module and provide instructions on
 how to install the module, any machine dependencies it may have (for
 example C compilers and installed libraries) and any other information
